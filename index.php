@@ -1,8 +1,11 @@
 <?php
-function defineGlobals(array $data){
+function defineGlobals(array $data, App &$app = null){
   foreach ($data as $key => $name) {
     if (!defined($name)) {
       define($key,$name);
+      if ($app) {
+        $app->constants[$key] = $name;
+      }
     }
   }
 }
@@ -16,9 +19,17 @@ function __true(){
 function __null(){
   return null;
 }
+
+foreach ([
+  "response",
+  "db",
+] as $value) {
+  require_once __DIR__ . "/$value.php";
+}
+
 class App{
-  private $response = [];
-  private $code = 404;
+  use Response;
+  use DB;
   public $process_string_num = true;
   public $constants = [];
   public $dynamic_routes = [];
@@ -33,12 +44,14 @@ class App{
   * check to load file if exist in route path
   ---------------------------------------------------------------------------*/
   private function exist_file_dir(string $path){
-    if (file_exists("$path.php")) {
-      require_once "$path.php";
+    $basePath =  __DIR__ . "/routes";
+    $route = "{$basePath}$path";
+    if (file_exists("$route.php")) {
+      require_once "$route.php";
       return true;
     }
-    elseif (is_dir($path) && file_exists("$path/index.php")) {
-        require_once "$path/index.php";
+    elseif (is_dir($route) && file_exists("$route/index.php")) {
+        require_once "$route/index.php";
         return true;
     }
     return false;
@@ -48,13 +61,16 @@ class App{
   * load files inside routes folder
   ---------------------------------------------------------------------------*/
   public function load_routes($path = null):void {
-    $basePath = !$path ? REQUEST : $path;
-    $path = __DIR__ . "/" . $basePath;
+
+    $el = $this->load_dynamic_routes();
+    if ($el) {
+      return;
+    }
+    $path = !$path ? REQUEST : $path;
     $exists = $this->exist_file_dir($path);
     if ($exists) {
       return;
     }
-    $this->load_dynamic_routes();
     return;
   }
 
@@ -91,23 +107,22 @@ class App{
     }
     return $data;
   }
-  private function load_dynamic_routes():void{
+  private function load_dynamic_routes():bool{
     if (empty($this->dynamic_routes)) {
-      return;
+      return false;
     }
 
     foreach ($this->dynamic_routes as $regex => $options) {
-      if (!is_callable($options["callback"] ?? null)) {
-        continue;
-      }
+      $path = ROUTES . "/" . ($options["callback"] ?? null) . ".php";
+
+      // echo $path;
       $regMethod = mb_strtolower($options["method"]);
       $currentMethod = mb_strtolower($_SERVER["REQUEST_METHOD"]);
       if ($regMethod != "all" && $regMethod != $currentMethod) {
         continue;
       }
       $reg = "#^" . $regex . "$#i";
-      // echo json_encode([$reg]);
-       preg_match_all($reg,REQUEST,$matches);
+      preg_match_all($reg,REQUEST,$matches);
       if (empty($matches[0])) {
         continue;
       }
@@ -125,26 +140,36 @@ class App{
         if (is_numeric($key)) continue;
         $args["params"][$key] = $value[0];
       }
-      $options["callback"]($args);
-      // echo json_encode($args,JSON_PRETTY_PRINT);
+      // $options["callback"]($args);
+      require_once $path;
+      return true;
     }
+    return false;
   }
 
 
   /**---------------------------------------------------------------------------
   * add a route based on regex
   ---------------------------------------------------------------------------*/
-  public function add_route($regex = "", callable|null $callback = null, array $options = array()):void{
+  public function add_route($regex = "", string|null $callback = null, array $options = array()):void{
     if (isset($this->dynamic_routes[$regex])) return;
     $default_options = array(
       "method" => "ALL",
       "args" => true,
     );
+    if (!$callback) {
+      $callback = "index";
+    }
+    $path = ROUTES . "/" . ($callback ?? null);
+    //make a replative path to
+    if (!file_exists("$path.php")) {
+      return;
+    }
     $options = array_merge($default_options,$options);
     $this->dynamic_routes[$regex] = array_merge(
       $options,
       array(
-        "callback" => $callback ? $callback : "__false",
+        "callback" => $callback ? $callback : "index",
       )
     );
   }
@@ -186,50 +211,23 @@ class App{
       //current relative path to server
       "HOME"    => $this->clean_route(dirname($_SERVER["SCRIPT_NAME"])),
     );
-    $this->constants = $data;
 
-    defineGlobals($data);
+    defineGlobals($data,$this);
     $request = $this->route_base();
-    $this->constants["REQUEST"] = $request;
+    $routes = ABSPATH . "/routes";
     defineGlobals(array(
-      "REQUEST" => $request
-    ));
+      "REQUEST" => $request,
+      "ROUTES" => $routes
+    ),$this);
   }
 
 
 }
 $app = new App();
-$app->add_route("routes/(?<slug>\w+)",function($args){
-  echo "perra madre";
-});
-
-/*
-public function load_files($path = "loads"){
-
-  // $dir = __DIR__ . "/$path"; // Define the base directory
-  // $files = scandir($dir); // Get all files in the directory
-  // $paths = [];
-  // $pre = $this->is_pre ? true : false;
-  // foreach ($files as $file) {
-  //   if ($file == "." || $file == "..") {
-  //     continue;
-  //   }
-  //   $filePath = $dir . '/' . $file; // Build the full file path
-  //   echo "$filePath\n";
-  //   if (is_dir($filePath)) {
-  //     // If it's a directory, call load_routes recursively
-  //     $this->load_routes($path . '/' . $file); // Pass the relative subdirectory
-  //   } elseif (pathinfo($file, PATHINFO_EXTENSION) === 'php') {
-  //     // If it's a PHP file, require it
-  //     require_once $filePath;
-  //   }
-  // }
-}
-*/
-
-echo "<pre>";
-// print_r($app->constants);
-print_r($_SERVER);
-print_r($app->dynamic_routes);
-$app->load_routes();
-echo "</pre>";
+$app->add_route("user/(?<id>\d+)","user/id");
+$app->add_route("user/(?<slug>[\w.-]+)","user/id");
+// $app->load_routes();
+// $app->connect();
+// $app->createTable("posts");
+// echo "<pre>";
+// print_r($app);
