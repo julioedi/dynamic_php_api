@@ -35,6 +35,7 @@ class App{
   public $dynamic_routes = [];
   public function __construct(){
     $this->rootPath();
+    $this->get_env();
   }
   public $is_pre = true;
 
@@ -228,6 +229,6 @@ $app->add_route("user/(?<id>\d+)","user/id");
 $app->add_route("user/(?<slug>[\w.-]+)","user/id");
 // $app->load_routes();
 // $app->connect();
-// $app->createTable("posts");
+$app->createTable("posts");
 // echo "<pre>";
 // print_r($app);

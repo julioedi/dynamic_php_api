@@ -16,10 +16,11 @@ trait DB
   public $mysqlStatus = 0;
   public $db = null;
   public $db_error = null;
-  public $env = array();
+  public $env = null;
   public $charset = "utf8mb4";
   public $db_prefix = "fnb_";
   public $collation = "utf8mb4_general_ci";
+  public $charset_collate = null;
   public $db_optionals = array(
     "date"      => "datetime NOT NULL default CURRENT_TIMESTAMP",
     "longText"  => "text NOT NULL default ''",
@@ -31,35 +32,32 @@ trait DB
       "ID"        => "bigint(20) unsigned NOT NULL auto_increment",
       "title"     => "text NOT NULL default ''",
       "slug"      => "varchar(200) NOT NULL default ''",
-      // "author"    => "bigint(20) unsigned NOT NULL default 1",
       "created"   => "datetime NOT NULL default CURRENT_TIMESTAMP",
       "created_by"=> "int(11) NOT NULL default 0",
       "updated"   => "datetime NOT NULL default CURRENT_TIMESTAMP",
       "updated_by"=> "int(11) NOT NULL default 0",
       "status"    => "int(11) NOT NULL default 1",
-      // "content"   => "longtext NOT NULL default ''",
-      // "settings"  => "longtext NOT NULL default ''"
     );
   public $db_stringDefaults = "";
-  public function connect():void{
-    if ($this->mysqlStatus !== 0) {
-      return;
+
+  public function get_env(){
+    //if is already called .env, will return the data;
+    if ($this->env) {
+      return $this->env;
     }
+    //check for .env file, if dont exists will not connect
     $env = ABSPATH . "/.env";
     if (!file_exists($env)) {
       $this->mysqlStatus = -1;
       return;
     }
-    $lines = file($env, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+
     $params = array();
+    $lines = file($env, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
     foreach ($lines as $line) {
         // Ignore lines that start with '#' (comments)
         if (strpos($line, '#') === 0) {
             continue;
-        }
-        $line = trim($line);
-        if (empty($line)) {
-          continue;
         }
         // Split the line by the '=' sign to separate key and value
         list($key, $value) = explode('=', $line, 2);
@@ -67,6 +65,17 @@ trait DB
         putenv("$key=$value");
     }
     $this->env = $params;
+    return $params;
+  }
+
+  public function connect():void{
+    if ($this->mysqlStatus !== 0) {
+      return;
+    }
+
+    //get .env file params;
+    $params = $this->get_env();
+
     if (  !isset($params["DB_HOST"]) || !isset($params["DB_USERNAME"]) || !isset($params["DB_PASSWORD"]) || !isset($params["DB_NAME"])) {
       $this->mysqlStatus = -2;
       return;
@@ -111,6 +120,9 @@ trait DB
     return $out;
 
   }
+  public function charset_collate(){
+    return " CHARACTER SET {$this->charset} COLLATE {$this->collation}";
+  }
 
   /** ----------------------------------------------------------------------------
   * Create a table based on default and parsed data
@@ -124,7 +136,7 @@ trait DB
       return;
     }
 
-    $charset_collate = " CHARACTER SET {$this->charset} COLLATE {$this->collation}" ;
+    $charset_collate = $this->charset_collate();
     $tableName = $this->db_prefix . $tableName;
     $sql = "CREATE TABLE IF NOT EXISTS `$tableName` ";
     $sql .= "(\n";
