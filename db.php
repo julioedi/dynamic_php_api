@@ -46,7 +46,7 @@ trait DB
       return $this->env;
     }
     //check for .env file, if dont exists will not connect
-    $env = ABSPATH . "/.env";
+    $env = APIPATH . "/.env";
     if (!file_exists($env)) {
       $this->mysqlStatus = -1;
       return;

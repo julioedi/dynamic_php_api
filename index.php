@@ -207,7 +207,7 @@ class App{
       "ROOT"    => $this->clean_route($_SERVER["DOCUMENT_ROOT"] ?? $_SERVER["DOCUMENT_ROOT"]),
 
       //script located folder
-      "ABSPATH" => $this->clean_route(__DIR__),
+      "APIPATH" => $this->clean_route(__DIR__),
 
       //current relative path to server
       "HOME"    => $this->clean_route(dirname($_SERVER["SCRIPT_NAME"])),
@@ -215,7 +215,7 @@ class App{
 
     defineGlobals($data,$this);
     $request = $this->route_base();
-    $routes = ABSPATH . "/routes";
+    $routes = APIPATH . "/routes";
     defineGlobals(array(
       "REQUEST" => $request,
       "ROUTES" => $routes
