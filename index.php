@@ -23,6 +23,7 @@ function __null(){
 foreach ([
   "response",
   "db",
+  "sqlcalls",
 ] as $value) {
   require_once __DIR__ . "/$value.php";
 }
@@ -30,14 +31,163 @@ foreach ([
 class App{
   use Response;
   use DB;
+  use SQLCalls;
   public $process_string_num = true;
   public $constants = [];
   public $dynamic_routes = [];
+  public $is_pre = true;
   public function __construct(){
     $this->rootPath();
     $this->get_env();
+    $this->connect();
+    // echo "<pre>";
+    $this->scanRoutes();
+    // echo "</pre>";
+    // die();
+    $this->load_routes();
+    $this->print();
   }
-  public $is_pre = true;
+
+  public function compareArray(array $element,array $extras,string $key){
+    $first = $element;
+    if (is_array($extras[$key] ?? null)) {
+      $first = array_merge($first,$extras[$key]);
+      $first = array_unique($first);
+    }elseif (is_string($extras[$key] ?? null)) {
+      $first[] = $extras[$key];
+    }
+    return $first;
+  }
+  public $phpfileExtReg = "/\.php$/i";
+  private function php_name_file($filedir):string|null{
+    if (preg_match($this->phpfileExtReg,$filedir)) {
+      return preg_replace($this->phpfileExtReg,"",$filedir);
+    }
+    return null;
+  }
+
+  private function name_to_regex($filedir, array $prevMatches = array()):false|array{
+    $file = mb_strtolower($filedir);
+    preg_match($this->dyanmicFileNamesReg,$filedir,$matches);
+
+    //if filename is not like [first,second].php
+    if (empty($matches)) {
+      return false;
+    }
+    $type = $matches["type"] === "d" ? "\d+" : "[A-Za-z0-9_-]+";
+    $names = explode(",",$matches["name"]);
+    $ret = array(
+      "type" => $type,
+      "names" => $names,
+      "filedir" => $filedir,
+      "regex" => array(),
+    );
+    if (count($names) > 1) {
+      foreach ($names as $v) {
+          // Dynamically create the regex pattern for each name
+        if (!empty($prevMatches)) {
+          foreach ($prevMatches as $prev) {
+              $ret["regex"][] = "$prev/$v";
+          }
+        }else{
+          $ret["regex"][] = $v;
+        }
+      }
+    }
+    elseif (count($names) === 1) {
+      $reg = "(?<{$names[0]}>{$type})";
+      if (!empty($prevMatches)) {
+        foreach ($prevMatches as $prev) {
+            $ret["regex"][] = "$prev/$reg";
+        }
+      }else{
+        $ret["regex"][] = $reg;
+      }
+    }
+    return $ret;
+
+  }
+
+  private function match_url(string $regex,$file):bool{
+    $reg = "#^" . $regex . "$#i";
+    if (!preg_match("#^" . $regex . "$#i",REQUEST)) {
+      return false;
+    }
+    return $this->exist_file_dir($file);
+  }
+
+  public $dyanmicFileNamesReg = "/^\[(?<name>\w+(?:,\w+)*)\](?<type>\w|$)/i";
+
+  private function scanRoutes($path = "",$prevMatches = []):bool{
+    $def_route = !empty($path) ?  ROUTES . "/$path" : ROUTES;
+    $def_route = preg_replace("/^\/+/","",$def_route);
+    if (!is_dir($def_route)) {
+      return false;
+    }
+    $dir = scandir($def_route);
+    foreach ($dir as $filedir) {
+      //prevent relative paths
+      if ($filedir == "." || $filedir == ".." || $filedir == "index.php") continue;
+      $base = "$def_route/$filedir";
+
+
+
+      //recursive scan subdirectories
+      if (is_dir($base)) {
+        $dyanmic = $this->name_to_regex($filedir);
+        //detect if file is for dynamic url
+        if ($dyanmic) {
+          $tmp = array_merge($prevMatches,$dyanmic["regex"]);
+          //check for multiple params
+          foreach ($dyanmic["regex"] as $tmpreg) {
+            $tmpMatch = $prevMatches;
+            $tmpMatch[] = $tmpreg;
+            $exists = $this->match_url($tmpreg,"$path/$filedir");
+            if ($exists) {
+              return true;
+            }
+          }
+        }else{
+          $exists = $this->match_url($filedir,"$path/$filedir");
+          $tmp = array_merge($prevMatches,[$filedir]);
+          if ($exists) {
+            return true;
+          }
+        }
+        $exist = $this->scanRoutes("$path/$filedir",$tmp);
+        if ($exist) {
+          return true;
+        }
+        continue;
+      }
+
+
+      $fileName = $this->php_name_file($filedir);
+      $dyanmic = $this->name_to_regex($fileName,$prevMatches);
+      if ($dyanmic) {
+        $tmp = array_merge($prevMatches,$dyanmic["regex"]);
+
+        //check for multiple params
+        foreach ($dyanmic["regex"] as $tmpreg) {
+          $tmpMatch = $prevMatches;
+          $tmpMatch[] = $tmpreg;
+          $exists = $this->match_url($tmpreg,"$path/$filedir");
+          if ($exists) {
+            return true;
+          }
+        }
+      }
+      else{
+        $exists = $this->match_url($filedir,"$path/$filedir");
+        $tmp = array_merge($prevMatches,[$filedir]);
+        if ($exists) {
+          // echo "$path/$filedir";
+          return true;
+        }
+      }
+    }
+    return false;
+  }
 
 
 
@@ -45,13 +195,17 @@ class App{
   * check to load file if exist in route path
   ---------------------------------------------------------------------------*/
   private function exist_file_dir(string $path){
-    $basePath =  __DIR__ . "/routes";
-    $route = "{$basePath}$path";
+    $basePath =  ROUTES;
+    $route = "{$basePath}/$path";
     if (file_exists("$route.php")) {
+      $this->code = 200;
+      $this->response = array();
       require_once "$route.php";
       return true;
     }
     elseif (is_dir($route) && file_exists("$route/index.php")) {
+        $this->code = 200;
+        $this->response = array();
         require_once "$route/index.php";
         return true;
     }
@@ -67,11 +221,11 @@ class App{
     if ($el) {
       return;
     }
-    $path = !$path ? REQUEST : $path;
-    $exists = $this->exist_file_dir($path);
-    if ($exists) {
-      return;
-    }
+    // $path = !$path ? REQUEST : $path;
+    // $exists = $this->exist_file_dir($path);
+    // if ($exists) {
+    //   return;
+    // }
     return;
   }
 
@@ -141,6 +295,7 @@ class App{
         if (is_numeric($key)) continue;
         $args["params"][$key] = $value[0];
       }
+      $this->response = [];
       // $options["callback"]($args);
       require_once $path;
       return true;
@@ -225,10 +380,3 @@ class App{
 
 }
 $app = new App();
-$app->add_route("user/(?<id>\d+)","user/id");
-$app->add_route("user/(?<slug>[\w.-]+)","user/id");
-// $app->load_routes();
-// $app->connect();
-$app->createTable("posts");
-// echo "<pre>";
-// print_r($app);

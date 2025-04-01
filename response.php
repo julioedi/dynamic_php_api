@@ -5,6 +5,7 @@
 trait Response{
   private $response = null;
   public $code = 200;
+  public $error = null;
   public $statusCodes = [
     100 => 'Continue',
     101 => 'Switching Protocols',
@@ -49,20 +50,68 @@ trait Response{
       $code = 200;
     }
   }
-  public function print(){
-    $code = $this->code;
-    if (!$this->response) {
-      $code = 404;
-      $this->response = array(
-        "message" => "No restPoint available "
+  public function getEndpoints(){
+    $list = $this->tables;
+    $endpoints = new stdClass();
+    $endpoints->possible_endpoints = new stdClass();
+    $endpoints->possible_querys = array(
+      "s" => array(
+        "type" => ["string"],
+        "desc" => "Search element",
+        "default" => "",
+      ),
+      "order_by" => array(
+        "type" => ["string"],
+        "desc" => "key of the object to order",
+        "default" => "updated",
+      ),
+      "order" => array(
+        "type" => ["string"],
+        "desc" => array(
+          "A-Z" => "Order elements by name",
+          "ASC" => "Ascendant order",
+          "DESC" => "Descendant order",
+        ),
+        "default" => "DESC",
+      ),
+      "fields_in" => array(
+        "type" => ["string","array"],
+        "desc" => "Only will get back this fields as object keys",
+        "default" => "",
+      ),
+      "fields_out" => array(
+        "type" => ["string","array"],
+        "desc" => "if 'fields_in' is active, this option will be excluded",
+        "default" => "",
+      ),
+    );
+    foreach ($list as $key => $value) {
+      $endpoints->possible_endpoints->$key = (object) array(
+        "all" => $this->clean_route(HOME . "/$key"),
+        "by_id" => $this->clean_route(HOME . "/$key/{id}"),
+        "by_slug" => $this->clean_route(HOME . "/$key/{slug}"),
       );
     }
+    return $endpoints;
+  }
+  public function print(){
+    $code = $this->code;
+    if (empty(REQUEST)) {
+      // $this->response = $this->getEndpoints();
+    }
+    else if (!is_array($this->response) && !is_object($this->response)) {
+      $code = 404;
+      $this->response = array(
+        "message" => "No restPoint available",
+      );
+    }
+
     $message = $this->statusCodes["$code"];
     $protocol = (isset($_SERVER['SERVER_PROTOCOL']) ? $_SERVER['SERVER_PROTOCOL'] : 'HTTP/1.0');
     header($protocol . ' ' . $code . ' ' . $message);
     $GLOBALS['http_response_code'] = $code;
     header('Content-Type: application/json; charset=utf-8');
-    header("Content-Encoding: gzip");
+    header('Content-Disposition: inline; filename="data.json"');
     foreach ([
       "X-Powered-By",
       "Server",
@@ -70,13 +119,18 @@ trait Response{
     ] as $value) {
       header_remove($value);
     }
-    echo gzencode(json_encode(array(
+    //if connection exists, close it before send response;
+    $this->close_connection();
+    $json = json_encode(array(
       "code" => $code,
       "data" => $this->response,
-    )));
-    if ($this->db) {
-      $this->db->close();
-      echo "closed connection";
+      "REQUEST" => REQUEST,
+    ), JSON_UNESCAPED_UNICODE);
+    if (function_exists("gzencode")) {
+      header("Content-Encoding: gzip");
+      echo gzencode($json);
+    }else{
+      echo $json;
     }
     die();
   }

@@ -21,6 +21,7 @@ trait DB
   public $db_prefix = "fnb_";
   public $collation = "utf8mb4_general_ci";
   public $charset_collate = null;
+  public $tables = array();
   public $db_optionals = array(
     "date"      => "datetime NOT NULL default CURRENT_TIMESTAMP",
     "longText"  => "text NOT NULL default ''",
@@ -29,15 +30,16 @@ trait DB
     "code_1"      => "int(11) NOT NULL default 1",
   );
   public $db_defaults = array(
-      "ID"        => "bigint(20) unsigned NOT NULL auto_increment",
-      "title"     => "text NOT NULL default ''",
-      "slug"      => "varchar(200) NOT NULL default ''",
-      "created"   => "datetime NOT NULL default CURRENT_TIMESTAMP",
-      "created_by"=> "int(11) NOT NULL default 0",
-      "updated"   => "datetime NOT NULL default CURRENT_TIMESTAMP",
-      "updated_by"=> "int(11) NOT NULL default 0",
-      "status"    => "int(11) NOT NULL default 1",
-    );
+      "ID"            => "bigint(20) unsigned NOT NULL auto_increment",
+      "title"         => "text NOT NULL default ''",
+      "slug"          => "varchar(200) NOT NULL default ''",
+      "created"       => "datetime NOT NULL default CURRENT_TIMESTAMP",
+      "created_by"    => "int(11) NOT NULL default 0",
+      "updated"       => "datetime NOT NULL default CURRENT_TIMESTAMP",
+      "updated_by"    => "int(11) NOT NULL default 0",
+      "status"        => "int(11) NOT NULL default 1",
+      "featured_id"   => "int(11) NOT NULL default 0",
+  );
   public $db_stringDefaults = "";
 
   public function get_env(){
@@ -85,11 +87,13 @@ trait DB
     $password = $params['DB_PASSWORD'];
     $dbname = $params['DB_NAME'];
     if (isset($params["DB_PREFIX"])) {
-      $this->db_prefix = $params["DB_PREFIX"];
+      //prevent special characters and spaces
+      $this->db_prefix = preg_replace("/[^a-z0-9_]/i","",$params["DB_PREFIX"]);
     }
-    if (!preg_match("/\_$/",$this->db_prefix)) {
-      $this->db_prefix .= "_";
+    if (substr($this->db_prefix,-1) != "_") {
+      $this->db_prefix = $this->db_prefix . "_";
     }
+
 
     //conntect to db and prevents print on error;
     try {
@@ -98,10 +102,24 @@ trait DB
       $this->charset = $conn->character_set_name();
       $this->collation = $conn->query("SHOW VARIABLES LIKE 'collation_database'")->fetch_assoc()['Value'];
       $this->db = $conn;
-    } catch (\Exception $e) {
+
+      //
+      $tables = $conn->query("SHOW TABLES");
+      if ($tables->num_rows > 0) {
+        while ($row = $tables->fetch_array()) {
+          $name = preg_replace($this->prefix_reg(),"",$row[0]);
+          $this->tables[$name] = true; // Table names are in the first column
+        }
+      }
+      $this->default_tables();
+    } catch (\Exception $error) {
       $this->mysqlStatus = 2;
-      $this->db_error = $e;
+      $this->db_error = $error;
     }
+  }
+
+  public function prefix_reg(){
+    return "#^" . $this->db_prefix . "#i";
   }
 
   /** --------------------------------------------------------------------------
@@ -127,14 +145,28 @@ trait DB
   /** ----------------------------------------------------------------------------
   * Create a table based on default and parsed data
   * @param string $tableName
+  *
+  * codes
+  *-1 = no mysql connection
+  * 0 = table already exists
+  * 1 = table created
+  * 2 = error while creating tables
   *----------------------------------------------------------------------------*/
-  public function createTable(string $tableName, array $data = array()){
+  public function createTable(string $tableName, array $data = array()):int{
     if (!$this->db && $this->mysqlStatus === 0 ) {
       $this->connect();
     }
     if ($this->mysqlStatus !== 1) {
-      return;
+      return -1;
     }
+    if (is_array($this->tables[$tableName] ?? null)) {
+      return 0;
+    }
+
+
+    $this->tables[$tableName] = $data;
+
+    $data = $data['cols'] ?? array();
 
     $charset_collate = $this->charset_collate();
     $tableName = $this->db_prefix . $tableName;
@@ -160,12 +192,32 @@ trait DB
     try {
       $val = $this->db->query($sql);
       if ($val) {
-        return true;
+        return 1;
       }else{
-        return false;
+        return 2;
       }
     } catch (\Exception $e) {
-      return false;
+      return 2;
+    }
+
+  }
+
+  /** ----------------------------------------------------------------------------
+  * Check if db is connected and inited
+  *----------------------------------------------------------------------------*/
+  public function is_connected():bool{
+    if ( $this->mysqlStatus === 0 ) {
+      $this->connect();
+    }
+    return $this->mysqlStatus === 1;
+  }
+
+  /** ----------------------------------------------------------------------------
+  * SQl;
+  *----------------------------------------------------------------------------*/
+  public function getElementByID(string $table_name,string|int $id):object|null{
+    if (!is_numeric($id) || !$this->is_connected()) {
+      return null;
     }
 
   }
@@ -173,10 +225,31 @@ trait DB
   /** ----------------------------------------------------------------------------
   * close connection to db before end the print json;
   *----------------------------------------------------------------------------*/
-  public function close_connection(){
+  public function close_connection():void{
     if (!$this->db) {
       return;
     }
     $this->db->close();
+  }
+
+  public function default_tables():void{
+    $tablesPath = APIPATH . "/tables";
+    if (!is_dir($tablesPath)) {
+      return;
+    }
+    $tables = scandir($tablesPath);
+    $reg = "/^(.*?)\.php$/i";
+    foreach ($tables as $tableFile) {
+      if (!preg_match($reg,$tableFile)) {
+        continue;
+      }
+      $name = preg_replace($reg,"$1",$tableFile);
+      $data = require "$tablesPath/$tableFile";
+      $data = !is_array($data ?? "") ? array() : $data;
+      if (is_array($data ?? "")) {
+         $this->createTable($name,$data);
+      }
+      // code...
+    }
   }
 }
