@@ -99,7 +99,7 @@ trait SQLCalls
       $preRow = (array) $item;
     }
 
-    if ($fields_in == 0 && $extras["exclude"]) {
+    if ($fields_in == 0 && isset($extras["exclude"])) {
       foreach ($extras["exclude"] as $key) {
         if (isset($preRow[$key])) {
           unset($preRow[$key]);
@@ -130,15 +130,70 @@ trait SQLCalls
     return $fields_in;
   }
 
+
+  private function scape(string $string){
+    if ($this->mysqlStatus == 0  || !$this->db) {
+      return "";
+    }
+    return $this->db->real_escape_string($string);
+  }
+
+
+
+  public function getArgs(){
+    if (empty($this->request_regex)) {
+      return array();
+    }
+    preg_match($this->request_regex,REQUEST,$matches);
+    foreach ($matches as $key => $value) {
+      if (is_numeric($key)) {
+        unset($matches[$key]);
+      }
+    }
+    return $matches;
+  }
+
+  private function get_element_by_id(string $tablename,string|int $id){
+    $sql = $this->create_sql_string($tablename,array("LIMIT" => 1),array(
+      "by_column" => array(
+        "name" => "ID",
+        "value" =>  $id,
+      ),
+    ));
+    $data = $this->query($sql[0]);
+    if (empty($data)) {
+      return null;
+    }
+    return $this->process_row($data[0]);
+  }
+
+
+  private function get_element_by_slug(string $tablename,string $slug){
+    $sql = $this->create_sql_string($tablename,array("LIMIT" => 1),array(
+      "by_column" => array(
+        "name" => "slug",
+        "value" =>  $slug,
+      ),
+    ));
+    $data = $this->query($sql[0]);
+    if (empty($data)) {
+      return null;
+    }
+    return $this->process_row($data[0]);
+  }
+
   /** --------------------------------------------------------------------------
   * @return string[]
   *                 [0] Call rows SQL
   *                 [1] sql to get total rows with params
   *---------------------------------------------------------------------------*/
+
+
   private function create_sql_string(string $tablename, array $params = array(), array $extras = array()){
+    $tablename = preg_replace("/[^a-z0-9_]/i","",$tablename);
     $from = "from `{$this->db_prefix}$tablename`";
 
-    $where = "";
+    $where = [];
     $s = "";
     if (isset($params["s"])) {
       $s = $params["s"];
@@ -146,14 +201,32 @@ trait SQLCalls
     else if (isset($_GET["s"])){
       $s = $_GET["s"];
     }
+    $by_col = false;
+    if (is_array($extras["by_column"] ?? null)) {
+      $value = $extras["by_column"]["value"] ?? null;
+      $colName = $extras["by_column"]["name"] ?? null;
+      if ( is_string($colName) && (is_string($value) || is_numeric(is_string($value)))) {
+        $by_col = true;
+        $colName = preg_replace("/[^a-z0-9_]/i","",$colName);
+        $value = $this->scape($value);
+        $where[] = "$colName='$value'";
+      }
+    }
 
-    if (!empty($s)) {
+    if (!$by_col && !empty($s)) {
+      $s = $this->scape($s);
+      $s = addslashes($s);
+      $s = trim($s);
       $sCols = $this->compareArray($this->search_columns,$extras,"search_columns");
-      // $sCols = $this->search_columns;
-      // if (is_array($extras["search_columns"] ?? null)) {
-      //   $sCols = array_merge($sCols,$extras["search_columns"]);
-      //   $sCols = array_unique($sCols);
-      // }
+      foreach ($sCols as $value) {
+        $where[] = $this->scape($value) . " LIKE '%$s%'";
+      }
+    }
+
+    if (!empty($where)) {
+      $where = " WHERE " . implode(" OR ", $where);
+    }else{
+      $where = "";
     }
 
     $limit = "";
@@ -169,6 +242,9 @@ trait SQLCalls
     $total = "SELECT COUNT(*) $from{$where}";
 
     $sql = "SELECT * $from{$where} $limit";
+    // echo $sql;
+    //
+    // die();
     return [
       $sql,
       $total,

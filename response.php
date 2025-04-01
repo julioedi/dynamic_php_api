@@ -6,6 +6,7 @@ trait Response{
   private $response = null;
   public $code = 200;
   public $error = null;
+  public $request_regex = "";
   public $statusCodes = [
     100 => 'Continue',
     101 => 'Switching Protocols',
@@ -94,24 +95,37 @@ trait Response{
     }
     return $endpoints;
   }
-  public function print(){
-    $code = $this->code;
-    if (empty(REQUEST)) {
-      // $this->response = $this->getEndpoints();
-    }
-    else if (!is_array($this->response) && !is_object($this->response)) {
-      $code = 404;
-      $this->response = array(
-        "message" => "No restPoint available",
-      );
-    }
 
+  public function print_json(array|object $json){
+
+    $this->headers();
+    $this->close_connection();
+    $json = json_encode($json, JSON_UNESCAPED_UNICODE);
+    if (function_exists("gzencode")) {
+      try {
+        header("Content-Encoding: gzip");
+        echo gzencode($json);
+        die();
+      } catch (\Exception $e) {
+        echo $json;
+        die();
+      }
+
+    }else{
+      echo $json;
+    }
+    die();
+  }
+
+  private function headers(){
+    $code = $this->code;
     $message = $this->statusCodes["$code"];
     $protocol = (isset($_SERVER['SERVER_PROTOCOL']) ? $_SERVER['SERVER_PROTOCOL'] : 'HTTP/1.0');
     header($protocol . ' ' . $code . ' ' . $message);
     $GLOBALS['http_response_code'] = $code;
     header('Content-Type: application/json; charset=utf-8');
-    header('Content-Disposition: inline; filename="data.json"');
+    $name = empty(REQUEST) ? "empty" : preg_replace("/[^a-z0-9_-]/i","_",REQUEST);
+    header("Content-Disposition: inline; filename=\"$name.json\"");
     foreach ([
       "X-Powered-By",
       "Server",
@@ -119,19 +133,35 @@ trait Response{
     ] as $value) {
       header_remove($value);
     }
-    //if connection exists, close it before send response;
-    $this->close_connection();
-    $json = json_encode(array(
+  }
+
+  public function print_error(string $message = "not found", int $code = 404,mixed $response = null){
+    $this->code = $code;
+    $this->error = true;
+    $this->error_message = $message;
+    $this->response = $response;
+  }
+  public function print(){
+    $code = $this->code;
+    if (empty(REQUEST)) {
+      $this->response = $this->getEndpoints();
+    }
+    else if (!is_array($this->response) && !is_object($this->response)) {
+      $this->print_error("No restPoint available");
+    }
+
+    $json = array(
       "code" => $code,
       "data" => $this->response,
       "REQUEST" => REQUEST,
-    ), JSON_UNESCAPED_UNICODE);
-    if (function_exists("gzencode")) {
-      header("Content-Encoding: gzip");
-      echo gzencode($json);
-    }else{
-      echo $json;
+    );
+    if (isset($this->error)) {
+      $json["error"] = $this->error;
     }
-    die();
+
+    if (isset($this->error_message)) {
+      $json["error_message"] = $this->error_message;
+    }
+    $this->print_json($json);
   }
 }

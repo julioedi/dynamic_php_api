@@ -74,7 +74,7 @@ class App{
     if (empty($matches)) {
       return false;
     }
-    $type = $matches["type"] === "d" ? "\d+" : "[A-Za-z0-9_-]+";
+    $type = $matches["type"] === "d" ? "[0-9]+" : "[A-Za-z0-9_-]+";
     $names = explode(",",$matches["name"]);
     $ret = array(
       "type" => $type,
@@ -113,7 +113,7 @@ class App{
     if (!preg_match("#^" . $regex . "$#i",REQUEST)) {
       return false;
     }
-    return $this->exist_file_dir($file);
+    return $this->exist_file_dir($file,$reg);
   }
 
   public $dyanmicFileNamesReg = "/^\[(?<name>\w+(?:,\w+)*)\](?<type>\w|$)/i";
@@ -143,18 +143,13 @@ class App{
             $tmpMatch = $prevMatches;
             $tmpMatch[] = $tmpreg;
             $exists = $this->match_url($tmpreg,"$path/$filedir");
-            if ($exists) {
-              return true;
-            }
           }
         }else{
           $exists = $this->match_url($filedir,"$path/$filedir");
           $tmp = array_merge($prevMatches,[$filedir]);
-          if ($exists) {
-            return true;
-          }
         }
         $exist = $this->scanRoutes("$path/$filedir",$tmp);
+
         if ($exist) {
           return true;
         }
@@ -165,25 +160,18 @@ class App{
       $fileName = $this->php_name_file($filedir);
       $dyanmic = $this->name_to_regex($fileName,$prevMatches);
       if ($dyanmic) {
-        $tmp = array_merge($prevMatches,$dyanmic["regex"]);
-
+        // $tmp = array_merge($prevMatches,$dyanmic["regex"]);
         //check for multiple params
         foreach ($dyanmic["regex"] as $tmpreg) {
           $tmpMatch = $prevMatches;
           $tmpMatch[] = $tmpreg;
-          $exists = $this->match_url($tmpreg,"$path/$filedir");
-          if ($exists) {
-            return true;
-          }
+          $exists = $this->match_url($tmpreg,"$path/$fileName");
         }
       }
       else{
-        $exists = $this->match_url($filedir,"$path/$filedir");
+        $exists = $this->match_url($filedir,"$path/$fileName");
         $tmp = array_merge($prevMatches,[$filedir]);
-        if ($exists) {
-          // echo "$path/$filedir";
-          return true;
-        }
+        return $exists;
       }
     }
     return false;
@@ -194,18 +182,20 @@ class App{
   /**---------------------------------------------------------------------------
   * check to load file if exist in route path
   ---------------------------------------------------------------------------*/
-  private function exist_file_dir(string $path){
+  private function exist_file_dir(string $path, string $reg = " "){
     $basePath =  ROUTES;
     $route = "{$basePath}/$path";
     if (file_exists("$route.php")) {
       $this->code = 200;
       $this->response = array();
+      $this->request_regex = $reg;
       require_once "$route.php";
       return true;
     }
     elseif (is_dir($route) && file_exists("$route/index.php")) {
         $this->code = 200;
         $this->response = array();
+        $this->request_regex = $reg;
         require_once "$route/index.php";
         return true;
     }
@@ -262,6 +252,7 @@ class App{
     }
     return $data;
   }
+
   private function load_dynamic_routes():bool{
     if (empty($this->dynamic_routes)) {
       return false;

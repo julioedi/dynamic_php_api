@@ -1,0 +1,12 @@
+# English translation file for MyApplication
+msgid "Welcome to MyApplication!"
+msgstr "Welcome to MyApplication!"
+
+msgid "Please enter your username."
+msgstr "Please enter your username."
+
+msgid "Login"
+msgstr "Login"
+
+msgid "Logout"
+msgstr "Logout"
