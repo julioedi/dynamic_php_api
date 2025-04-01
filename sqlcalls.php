@@ -153,7 +153,7 @@ trait SQLCalls
     return $matches;
   }
 
-  private function get_element_by_id(string $tablename,string|int $id){
+  private function get_element_by_id(string $tablename,string|int $id,array $extra = array()){
     $sql = $this->create_sql_string($tablename,array("LIMIT" => 1),array(
       "by_column" => array(
         "name" => "ID",
@@ -164,11 +164,11 @@ trait SQLCalls
     if (empty($data)) {
       return null;
     }
-    return $this->process_row($data[0]);
+    return $this->process_row($data[0],$extra);
   }
 
 
-  private function get_element_by_slug(string $tablename,string $slug){
+  private function get_element_by_slug(string $tablename,string $slug,array $extra = array()){
     $sql = $this->create_sql_string($tablename,array("LIMIT" => 1),array(
       "by_column" => array(
         "name" => "slug",
@@ -179,7 +179,7 @@ trait SQLCalls
     if (empty($data)) {
       return null;
     }
-    return $this->process_row($data[0]);
+    return $this->process_row($data[0],$extra);
   }
 
   /** --------------------------------------------------------------------------

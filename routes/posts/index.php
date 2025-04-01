@@ -4,6 +4,7 @@ $this->pagination("posts",array(
   "json" => array(
     "tags",
     "categories",
+    "content",
   ),
   "exclude" => array(
     "seo",

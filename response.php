@@ -152,8 +152,8 @@ trait Response{
 
     $json = array(
       "code" => $code,
+      "request" => REQUEST,
       "data" => $this->response,
-      "REQUEST" => REQUEST,
     );
     if (isset($this->error)) {
       $json["error"] = $this->error;

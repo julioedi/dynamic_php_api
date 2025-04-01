@@ -341,6 +341,7 @@ class App{
     $reg = str_replace("/","\\/",HOME);
     $reg = "/^$reg/";
     $uri = preg_replace($reg,"",$uri);
+    $uri = preg_replace("/^\//","",$uri);
     return $uri;
   }
 
