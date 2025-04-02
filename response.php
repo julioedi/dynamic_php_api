@@ -152,7 +152,7 @@ trait Response{
     if (empty(REQUEST)) {
       $this->response = $this->getEndpoints();
     }
-    else if (!is_array($this->response) && !is_object($this->response)) {
+    else if (!is_array($this->response) && !is_object($this->response) && !$this->error_message) {
       $this->print_error("No restPoint available");
     }
 
@@ -169,5 +169,6 @@ trait Response{
       $json["error_message"] = $this->error_message;
     }
     $this->print_json($json);
+    die();
   }
 }
