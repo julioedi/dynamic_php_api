@@ -24,7 +24,8 @@ foreach ([
   "response",
   "db",
   "sqlcalls",
-  "encoder"
+  "encoder",
+  "utils"
 ] as $value) {
   require_once __DIR__ . "/$value.php";
 }
@@ -33,11 +34,13 @@ class App{
   use Response;
   use DB;
   use SQLCalls;
+  use Utils;
   public $process_string_num = true;
   public $constants = [];
   public $dynamic_routes = [];
   public $is_pre = true;
   public function __construct(){
+    $this->method = $_SERVER["REQUEST_METHOD"] ?? "GET";
     $this->rootPath();
     $this->get_env();
     $this->connect();
@@ -75,7 +78,7 @@ class App{
     if (empty($matches)) {
       return false;
     }
-    $type = $matches["type"] === "d" ? "[0-9]+" : "[A-Za-z0-9_-]+";
+    $type = $matches["type"] === "d" ? "[0-9]+" : "([A-Za-z][A-Za-z0-9_-]+|[A-Za-z])";
     $names = explode(",",$matches["name"]);
     $ret = array(
       "type" => $type,

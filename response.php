@@ -100,7 +100,7 @@ trait Response{
 
     $this->headers();
     $this->close_connection();
-    $json = json_encode($json, JSON_UNESCAPED_UNICODE);
+    $json = json_encode($json, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     if (function_exists("gzencode")) {
       try {
         header("Content-Encoding: gzip");
@@ -141,7 +141,10 @@ trait Response{
     }
   }
 
-  public function print_error(string $message = "not found", int $code = 404,mixed $response = null){
+  public function print_error(string|null $message = null, int $code = 404,mixed $response = null){
+    if (empty($message)) {
+      $message = $this->statusCodes[$code] ?? "Error";
+    }
     $this->code = $code;
     $this->error = true;
     $this->error_message = $message;

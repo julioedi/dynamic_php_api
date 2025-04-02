@@ -9,9 +9,13 @@ trait SQLCalls
   public $max_post_per_page = 100;
   public $numeric_db_keys = ["ID","created_by","updated_by","status","featured_id"];
   public $pagination_exclude = ["created","updated_by"];
-
   public $search_columns = ["title","slug"];
 
+
+
+  /** --------------------------------------------------------------------------
+  * @return array|null run the sql call, if dont work will return null
+  *---------------------------------------------------------------------------*/
   private function query(string $sql):array|null{
     if (!$this->db) {
       if ($this->db !== 0) {
@@ -32,7 +36,34 @@ trait SQLCalls
     } catch (\Exception $e) {
       return null;
     }
+  }
 
+  /** --------------------------------------------------------------------------
+  * @return array gets the data provided by a form body content in fetch/curl
+  *---------------------------------------------------------------------------*/
+  public function get_body():array{
+    if (!empty($_POST)) {
+      return $_POST;
+    }
+    $data = file_get_contents("php://input");
+    if (empty($data)) {
+      return $data;
+    }
+    try {
+      $data = json_decode($data);
+      return $data;
+    } catch (\Exception $e) {
+      return array();
+    }
+
+  }
+
+
+  /** --------------------------------------------------------------------------
+  * @return bool check if token match for Create,Update,Delete
+  *---------------------------------------------------------------------------*/
+  public function validateToken(string $token = ""):array|null{
+    return array();
   }
 
   private function process_row($row, array $extras = array()){
@@ -188,7 +219,7 @@ trait SQLCalls
     return $this->process_row($data[0],$extra);
   }
 
-  
+
 
   /** --------------------------------------------------------------------------
   * @return string[]
