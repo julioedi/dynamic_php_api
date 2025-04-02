@@ -24,6 +24,7 @@ foreach ([
   "response",
   "db",
   "sqlcalls",
+  "encoder"
 ] as $value) {
   require_once __DIR__ . "/$value.php";
 }
@@ -343,6 +344,17 @@ class App{
     $uri = preg_replace($reg,"",$uri);
     $uri = preg_replace("/^\//","",$uri);
     return $uri;
+  }
+
+
+
+  public function RandomID($totalChars = 16,$length = 1,) {
+   $characters = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+   $res = [];
+   for ($i=0; $i < $length; $i++) {
+     $res[] = substr(str_shuffle($characters), 0, $totalChars);
+   }
+   return implode("-",$res);
   }
 
   /**---------------------------------------------------------------------------

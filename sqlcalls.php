@@ -153,7 +153,10 @@ trait SQLCalls
     return $matches;
   }
 
-  private function get_element_by_id(string $tablename,string|int $id,array $extra = array()){
+  /** --------------------------------------------------------------------------
+  * @return array|null
+  *---------------------------------------------------------------------------*/
+  private function get_element_by_id(string $tablename,string|int $id,array $extra = array()):array|null{
     $sql = $this->create_sql_string($tablename,array("LIMIT" => 1),array(
       "by_column" => array(
         "name" => "ID",
@@ -168,7 +171,10 @@ trait SQLCalls
   }
 
 
-  private function get_element_by_slug(string $tablename,string $slug,array $extra = array()){
+  /** --------------------------------------------------------------------------
+  * @return array|null
+  *---------------------------------------------------------------------------*/
+  private function get_element_by_slug(string $tablename,string $slug,array $extra = array()):array|null{
     $sql = $this->create_sql_string($tablename,array("LIMIT" => 1),array(
       "by_column" => array(
         "name" => "slug",
@@ -182,13 +188,13 @@ trait SQLCalls
     return $this->process_row($data[0],$extra);
   }
 
+  
+
   /** --------------------------------------------------------------------------
   * @return string[]
   *                 [0] Call rows SQL
   *                 [1] sql to get total rows with params
   *---------------------------------------------------------------------------*/
-
-
   private function create_sql_string(string $tablename, array $params = array(), array $extras = array()){
     $tablename = preg_replace("/[^a-z0-9_]/i","",$tablename);
     $from = "from `{$this->db_prefix}$tablename`";

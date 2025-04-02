@@ -126,6 +126,12 @@ trait Response{
     header('Content-Type: application/json; charset=utf-8');
     $name = empty(REQUEST) ? "empty" : preg_replace("/[^a-z0-9_-]/i","_",REQUEST);
     header("Content-Disposition: inline; filename=\"$name.json\"");
+
+    if (isset($_SERVER['HTTP_ORIGIN'])) {
+      header("Access-Control-Allow-Origin: *");
+      header('Access-Control-Allow-Credentials: true');
+      header('Access-Control-Max-Age: 86400');    // cache for 1 day
+    }
     foreach ([
       "X-Powered-By",
       "Server",

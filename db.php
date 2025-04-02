@@ -42,6 +42,10 @@ trait DB
   );
   public $db_stringDefaults = "";
 
+  public function update_env(string $key, string $value){
+    $reg = "#($key)\=($value)#i";
+    $lines = file($env, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+  }
   public function get_env(){
     //if is already called .env, will return the data;
     if ($this->env) {
@@ -67,6 +71,17 @@ trait DB
         putenv("$key=$value");
     }
     $this->env = $params;
+
+    //create a random password if dont exists that will be use as param for tokens
+    if (empty( $params["ENCODE_PSW"] ?? null )) {
+      $content = file_get_contents($env);
+      $id = $this->RandomID(24);
+      $content .= "\rENCODE_PSW=$id";
+      $this->encode_id = $id;
+      file_put_contents($env, $content);
+    }else{
+      $this->encode_id = $params["ENCODE_PSW"];
+    }
     return $params;
   }
 
