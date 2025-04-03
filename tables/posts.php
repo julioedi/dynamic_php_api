@@ -16,4 +16,8 @@ return [
     "seo",
     "content"
   ),
+  // "search_columns" => array(
+  //   "content",
+  //   "excerpt",
+  // )
 ];
