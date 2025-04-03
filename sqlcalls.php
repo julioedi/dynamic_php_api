@@ -66,9 +66,67 @@ trait SQLCalls
     return array();
   }
 
-  private function process_row($row, array $extras = array()){
+
+  private function get_table_elements(array|null $ids,string $tablename,bool|array $process_json_tables = true):array{
+    // return $ids;
+    if (empty($ids)) {
+      return $ids;
+    }
+    $list = [];
+    $preList = [];
+    $process = null;
+    if ($process_json_tables) {
+      if (!empty($ids)) {
+        if (is_array($process_json_tables)) {
+          if (!empty($process_json_tables)) {
+            $process = (in_array($tablename,$process_json_tables) && isset($this->tables[$tablename]));
+          }
+        }else{
+          $process = isset($this->tables[$tablename]);
+        }
+      }
+    }
+    if (!$process) {
+      return $ids;
+    }
+
+    $sql = $this->create_sql_string($tablename,array("LIMIT" => count($ids)),array(
+      "by_column" => array(
+        "name" => "ID",
+        "value" =>  $ids,
+      ),
+    ));
+    $data = $this->query($sql[0]);
+    $colData = $this->tables[$tablename];
+    if (is_array($colData["fields_in_child"] ?? null)) {
+      $colData["fields_in"] = $colData["fields_in_child"];
+    }
+    foreach ($data as $key => &$value) {
+      $prelist[$value["ID"]] = $this->process_row($data[$key],$colData,$tablename);
+    }
+
+    foreach ($ids as $key => &$value) {
+      if (isset($prelist[$value])) {
+        $value = $prelist[$value];
+      }else{
+        unset($prelist[$value]);
+      }
+    }
+    // echo "<pre>";
+    // print_r($colData);
+    // die();
+
+    // return $this->process_row($data[0],$extra);
+
+    return $ids;
+  }
+  private function process_row($row, array $extras = array(), null|string $tablename = null){
     $item = new stdClass();
 
+    $tableData = array();
+    if ($tablename && isset($this->tables[$tablename])) {
+      $tableData = $this->tables[$tablename];
+    }
 
     if (is_array($extras["int"] ?? null)) {
       $intkeys = array_merge($this->numeric_db_keys,$extras["int"]);
@@ -77,16 +135,31 @@ trait SQLCalls
       $intkeys = $this->numeric_db_keys;
     }
 
+    //default tables params for int fields
+    if ( is_array($tableData["int"] ?? null) ) {
+      $intkeys = array_merge($tableData["int"],$intkeys);
+      $intkeys = array_unique($intkeys);
+    }
+
+
     $json_keys = array();
     if (is_array($extras["json"] ?? null)) {
       $json_keys = $extras["json"];
     }
 
+    //default tables params for json_fields
+    if ( is_array($tableData["json"] ?? null) ) {
+      $json_keys = array_merge($tableData["json"],$json_keys);
+      $json_keys = array_unique($json_keys);
+    }
+
+
+    $process_json_tables = $extras["process_json_tables"] ?? true;
+
     foreach ($row as $key => $value) {
       //exlude regular results
       if (is_numeric($key)) continue;
 
-      // if (in_array($key,$exclude_keys)) continue;
 
       //try
       if (in_array($key,$intkeys)) {
@@ -98,12 +171,15 @@ trait SQLCalls
         continue;
       }
 
-      if (in_array($key,$json_keys)) {
+      if ( in_array($key,$json_keys) ) {
         try {
           if (empty($value)) {
             $item->$key = null;
           }else{
             $item->$key = unserialize($value);
+            if (!empty($item->$key) && $process_json_tables) {
+              $item->$key = $this->get_table_elements($item->$key,$key,$process_json_tables);
+            }
           }
 
         } catch (\Exception $e) {
@@ -137,6 +213,8 @@ trait SQLCalls
         }
       }
     }
+
+
 
     return $preRow;
   }
@@ -198,7 +276,7 @@ trait SQLCalls
     if (empty($data)) {
       return null;
     }
-    return $this->process_row($data[0],$extra);
+    return $this->process_row($data[0],$extra,$tablename);
   }
 
 
@@ -216,7 +294,7 @@ trait SQLCalls
     if (empty($data)) {
       return null;
     }
-    return $this->process_row($data[0],$extra);
+    return $this->process_row($data[0],$extra,$tablename);
   }
 
 
@@ -242,11 +320,27 @@ trait SQLCalls
     if (is_array($extras["by_column"] ?? null)) {
       $value = $extras["by_column"]["value"] ?? null;
       $colName = $extras["by_column"]["name"] ?? null;
-      if ( is_string($colName) && (is_string($value) || is_numeric(is_string($value)))) {
+      if ( is_string($colName) && $value ) {
         $by_col = true;
         $colName = preg_replace("/[^a-z0-9_]/i","",$colName);
-        $value = $this->scape($value);
-        $where[] = "$colName='$value'";
+        if (is_array($value)) {
+          $values_list = [];
+          foreach ($value as $el) {
+            if (is_string($el) || is_numeric($el)) {
+              $values_list[] = !is_numeric($el) ? "`$el`" : $el;
+            }
+          }
+
+          if (!empty($values_list)) {
+            $value = $this->scape(implode(",",$values_list));
+            if (!empty($value)) {
+              $where[] = "$colName in ($value)";
+            }
+          }
+        }else{
+          $value = $this->scape($value);
+          $where[] = "$colName='$value'";
+        }
       }
     }
 
@@ -363,7 +457,7 @@ trait SQLCalls
       $data = $this->query($sql[0]);
       if ($data) {
         foreach ($data as $row) {
-          $list[] = $this->process_row($row,$parsed_keys);
+          $list[] = $this->process_row($row,$parsed_keys,$tablename);
         }
       }
 

@@ -63,4 +63,70 @@ trait Utils
     }
     return $raw ? $this->raw_headers : $this->headers;
   }
+
+
+  /** --------------------------------------------------------------------------
+  * @return array module to print elements and assing regex
+  *---------------------------------------------------------------------------*/
+  public function print_element_by_id(string $tablename, array $custom = array()){
+    $this->print_element_by_($tablename,"id",$custom);
+  }
+  public function print_element_by_slug(string $tablename, array $custom = array()){
+    $this->print_element_by_($tablename,"slug",$custom,false);
+  }
+
+  public function print_element_by_(string $tablename, string|null $code = null, array $custom = array(),bool|null $by_id = true):void{
+    if (!$code) {
+      if (!$by_id) {
+        $code = "slug";
+      }else{
+        $code = "id";
+      }
+    }
+
+    header("Content-Type: text/javascript; charset=utf-8");
+
+    $function = $by_id ? "get_element_by_id" : "get_element_by_slug";
+    if ($by_id) {
+      //$type = $matches["type"] === "d" ? "[0-9]+" : "([A-Za-z][A-Za-z0-9_-]+|[A-Za-z])";
+      $this->request_regex = "$tablename/(?<{$code}>\d+)";
+    }else{
+      $this->request_regex = "$tablename/(?<{$code}>([A-Za-z][A-Za-z0-9_-]+|[A-Za-z]))";
+    }
+    $this->request_regex = "#^" . $this->request_regex . "$#i";
+
+    $args = array();
+    if (is_array($custom["json"] ?? null)) {
+      $array["json"] = $custom["json"];
+    }
+
+
+    $uriArgs = $this->getArgs();
+    if (isset($uriArgs[$code])) {
+      $id = $uriArgs[$code];
+    }else{
+      if ($by_id) {
+        $id = 0;
+      }else{
+        $id = "";
+      }
+    }
+
+
+    if ($this->method === "GET") {
+      $post = $this->$function($tablename,$id,$custom);
+      if (!$post) {
+        $this->print_error(null,404);
+        return;
+      }
+      $this->print_json($post);
+      return;
+    }
+
+    $token = $this->validateToken();
+    if (!$token) {
+      $this->print_error(null,401);
+      return;
+    }
+  }
 }

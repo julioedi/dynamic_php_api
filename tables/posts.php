@@ -9,7 +9,7 @@ return [
     "seo" => "longText",
   ),
   //keys that must be serialized
-  "serialized" => array(
+  "json" => array(
     "tags",
     "categories",
     "attached_images",

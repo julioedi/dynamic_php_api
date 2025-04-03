@@ -101,19 +101,19 @@ trait Response{
     $this->headers();
     $this->close_connection();
     $json = json_encode($json, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-    if (function_exists("gzencode")) {
-      try {
-        header("Content-Encoding: gzip");
-        echo gzencode($json);
-        die();
-      } catch (\Exception $e) {
-        echo $json;
-        die();
-      }
-
-    }else{
+    // if (function_exists("gzencode")) {
+    //   try {
+    //     header("Content-Encoding: gzip");
+    //     echo gzencode($json);
+    //     die();
+    //   } catch (\Exception $e) {
+    //     echo $json;
+    //     die();
+    //   }
+    //
+    // }else{
       echo $json;
-    }
+    // }
     die();
   }
 
@@ -155,7 +155,7 @@ trait Response{
     if (empty(REQUEST)) {
       $this->response = $this->getEndpoints();
     }
-    else if (!is_array($this->response) && !is_object($this->response) && !$this->error_message) {
+    else if (!is_array($this->response) && !is_object($this->response) && !isset($this->error_message)) {
       $this->print_error("No restPoint available");
     }
 
