@@ -5,6 +5,7 @@ return [
     "content" => "longText",
     "tags" => "longText",
     "categories" => "longText",
+    "type" => "code_0",
     "attached_images" => "longText",
     "seo" => "longText",
   ),
@@ -15,6 +16,9 @@ return [
     "attached_images",
     "seo",
     "content"
+  ),
+  "int" => array(
+    "type",
   ),
   // "search_columns" => array(
   //   "content",

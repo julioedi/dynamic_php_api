@@ -140,7 +140,10 @@ trait DB
   /** --------------------------------------------------------------------------
   * @return string $sql of default columns for tables
   *---------------------------------------------------------------------------*/
-  private function get_defaults(){
+  private function get_defaults( bool $custom = false){
+    if ($custom) {
+      return "ID bigint(20) unsigned NOT NULL auto_increment,\n";
+    }
     if (!empty($this->stringDefaults)) {
       return $this->stringDefaults;
     }
@@ -167,7 +170,7 @@ trait DB
   * 1 = table created
   * 2 = error while creating tables
   *----------------------------------------------------------------------------*/
-  public function createTable(string $tableName, array $data = array()):int{
+  public function createTable(string $tableName, array $preData = array()):int{
     if (!$this->db && $this->mysqlStatus === 0 ) {
       $this->connect();
     }
@@ -178,32 +181,46 @@ trait DB
       return 0;
     }
 
+    $custom = isset($preData['custom']);
+    if (isset($this->tables[$tableName]) && !is_array($this->tables[$tableName]) ) {
+      $this->tables[$tableName] = $preData;
+      return 0;
+    }
 
-    $this->tables[$tableName] = $data;
-
-    $data = $data['cols'] ?? array();
+    $data = $preData['cols'] ?? array();
 
     $charset_collate = $this->charset_collate();
     $tableName = $this->db_prefix . $tableName;
     $sql = "CREATE TABLE IF NOT EXISTS `$tableName` ";
     $sql .= "(\n";
 
-    $sql .= $this->get_defaults();
+    $sql .= $this->get_defaults($custom);
     foreach ($data as $key => $value) {
       if (!is_string($value)) continue;
       if (is_numeric($value)) continue;
       if (!isset($this->db_optionals[$value])) continue;
-      if (isset($this->db_defaults[$key])) continue;
+      if (!$custom && isset($this->db_defaults[$key])) continue;
       $pre = $key . $value;
       if (preg_match("/(\"|\(|\)|\,)/",$pre)) continue;
 
       $sql .= "`$key` {$this->db_optionals[$value]},\n";
 
     }
-    $sql .= "PRIMARY KEY  (ID),\n";
-    $sql .= "UNIQUE (slug)\n";//UNIQUE
+    $sql .= "PRIMARY KEY  (ID)";
+    if (!$custom) {
+      $sql .= ",\nUNIQUE (slug)\n";//UNIQUE
+    }else if(is_array($preData["unique"] ?? null)){
+      foreach ($preData["unique"] as $value) {
+        if (is_string($value) && isset($data[$value])) {
+          $sql .= "UNIQUE ($value)\n";//UNIQUE
+        }
+      }
+    }
     $sql .= ")";
     $sql .= $charset_collate . ";";
+    // echo "<pre>";
+    // print_r($sql);
+    // die();
     try {
       $val = $this->db->query($sql);
       if ($val) {

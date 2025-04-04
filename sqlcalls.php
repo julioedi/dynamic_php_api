@@ -34,6 +34,7 @@ trait SQLCalls
       }
       return $list;
     } catch (\Exception $e) {
+      echo $e;
       return null;
     }
   }
@@ -62,8 +63,9 @@ trait SQLCalls
   /** --------------------------------------------------------------------------
   * @return bool check if token match for Create,Update,Delete
   *---------------------------------------------------------------------------*/
-  public function validateToken(string $token = ""):array|null{
-    return array();
+  public function validateToken(string $token = ""):array|bool|null{
+    // return array();
+    return true;
   }
 
 
@@ -120,6 +122,89 @@ trait SQLCalls
 
     return $ids;
   }
+
+  public function update_item(string $tablename,array $columns, array $where, string $operator ="OR"):array{
+    if (!$this->validateToken()) {
+      return array(
+        "error" => "No enougth permissions",
+        "updated" => 0,
+        "data" => null,
+      );
+    }
+    $colsString = [];
+    $whereString = [];
+    if (empty($columns)) {
+      return array(
+        "error" => "No columns",
+        "updated" => 0,
+        "data" => null,
+      );
+    }
+    if (empty($where)) {
+      return array(
+        "error" => "No validate values",
+        "updated" => 0,
+        "data" => null,
+      );
+    }
+    foreach ($columns as $column => $value) {
+      if (is_object($value) || is_array($value)) {
+        $value = serialize($value);
+      }
+      elseif (is_bool($value) || $value == null) {
+        $value = $value ? "true" : "false";
+      }
+      if (preg_match("/password/",$column)) {
+        $value = md5($value);
+      }
+      $value =  $this->scape($value);
+      $colsString[] = "SET `$column` = '$value'";
+    }
+
+
+    foreach ($where as $column => $value) {
+      if (is_object($value) || is_array($value) || is_bool($value) || $value == null) {
+        unset($where[$column]);
+        continue;
+      }
+      $value =  $this->scape($value);
+      $whereString[] = "`$column` = '$value'";
+    }
+
+    if (empty($column)) {
+      return array(
+        "error" => "Invalid validate values",
+        "updated" => 0,
+        "data" => null,
+      );
+    }
+
+    $sql = "UPDATE `{$this->db_prefix}$tablename`\n" . implode(", ",$colsString) . "\nWHERE " . implode("$operator ",$whereString) . ";";
+    try {
+      $data = $this->db->query($sql);
+      return array(
+        "error" => null,
+        "updated" => $data,
+        "data" => array(
+          "updated" => $columns,
+          "match_values" => $where,
+        ),
+      );
+    } catch (\Exception $e) {
+      return array(
+        "error" => "Bad sql call",
+        "updated" => 0,
+        "data" => array(
+          "sql" => $sql
+        ),
+      );
+    }
+
+    // -- SET ContactName = 'Alfred Schmidt', City = 'Frankfurt'
+    // -- WHERE CustomerID = 1;";
+  }
+
+
   private function process_row($row, array $extras = array(), null|string $tablename = null){
     $item = new stdClass();
 
@@ -159,6 +244,10 @@ trait SQLCalls
     foreach ($row as $key => $value) {
       //exlude regular results
       if (is_numeric($key)) continue;
+      //prevent direct access from api to passwords
+      if (preg_match("/password/i",$key)) {
+        continue;
+      }
 
 
       //try
@@ -208,9 +297,12 @@ trait SQLCalls
 
     if ($fields_in == 0 && isset($extras["exclude"])) {
       foreach ($extras["exclude"] as $key) {
-        if (isset($preRow[$key])) {
-          unset($preRow[$key]);
+        try {
+            unset($preRow[$key]);
+        } catch (\Exception $e) {
+            continue;
         }
+
       }
     }
 
