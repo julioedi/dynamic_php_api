@@ -3,6 +3,7 @@ return [
   "cols" => array(
     "name" => "longText",
     "email" => "longText",
+    "user_level" => "code_1",
     "content" => "longText",
     "markers" => "longText",
     "follow" => "longText",

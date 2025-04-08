@@ -38,6 +38,16 @@ trait SQLCalls
       return null;
     }
   }
+  private function get_query_rows(string $sql,array $extras = array(), null|string $tablename = null){
+    $list = $this->query($sql);
+    if (!$list) {
+      return null;
+    }
+    foreach ($list as &$value) {
+      $value = $this->process_row($value,$extras ,$tablename);
+    }
+    return $list;
+  }
 
   /** --------------------------------------------------------------------------
   * @return array gets the data provided by a form body content in fetch/curl
@@ -77,6 +87,8 @@ trait SQLCalls
     $list = [];
     $preList = [];
     $process = null;
+
+    //check if default rendered tables got json elements
     if ($process_json_tables) {
       if (!empty($ids)) {
         if (is_array($process_json_tables)) {
@@ -92,7 +104,8 @@ trait SQLCalls
       return $ids;
     }
 
-    $sql = $this->create_sql_string($tablename,array("LIMIT" => count($ids)),array(
+    //limit the search to max element ids selected
+    $sql = $this->select_sql_string($tablename,array("LIMIT" => count($ids)),array(
       "by_column" => array(
         "name" => "ID",
         "value" =>  $ids,
@@ -100,6 +113,8 @@ trait SQLCalls
     ));
     $data = $this->query($sql[0]);
     $colData = $this->tables[$tablename];
+
+    //if is a child element row, will use default table fro process keys to fow
     if (is_array($colData["fields_in_child"] ?? null)) {
       $colData["fields_in"] = $colData["fields_in_child"];
     }
@@ -114,96 +129,17 @@ trait SQLCalls
         unset($prelist[$value]);
       }
     }
-    // echo "<pre>";
-    // print_r($colData);
-    // die();
-
-    // return $this->process_row($data[0],$extra);
-
     return $ids;
   }
 
-  public function update_item(string $tablename,array $columns, array $where, string $operator ="OR"):array{
-    if (!$this->validateToken()) {
-      return array(
-        "error" => "No enougth permissions",
-        "updated" => 0,
-        "data" => null,
-      );
-    }
-    $colsString = [];
-    $whereString = [];
-    if (empty($columns)) {
-      return array(
-        "error" => "No columns",
-        "updated" => 0,
-        "data" => null,
-      );
-    }
-    if (empty($where)) {
-      return array(
-        "error" => "No validate values",
-        "updated" => 0,
-        "data" => null,
-      );
-    }
-    foreach ($columns as $column => $value) {
-      if (is_object($value) || is_array($value)) {
-        $value = serialize($value);
-      }
-      elseif (is_bool($value) || $value == null) {
-        $value = $value ? "true" : "false";
-      }
-      if (preg_match("/password/",$column)) {
-        $value = md5($value);
-      }
-      $value =  $this->scape($value);
-      $colsString[] = "SET `$column` = '$value'";
-    }
 
 
-    foreach ($where as $column => $value) {
-      if (is_object($value) || is_array($value) || is_bool($value) || $value == null) {
-        unset($where[$column]);
-        continue;
-      }
-      $value =  $this->scape($value);
-      $whereString[] = "`$column` = '$value'";
+  private function process_rows(array $rows, array $extras = array(), null|string $tablename = null){
+    foreach ($rows as &$row) {
+      $row = $this->process_row($row,$extras,$tablename);
     }
-
-    if (empty($column)) {
-      return array(
-        "error" => "Invalid validate values",
-        "updated" => 0,
-        "data" => null,
-      );
-    }
-
-    $sql = "UPDATE `{$this->db_prefix}$tablename`\n" . implode(", ",$colsString) . "\nWHERE " . implode("$operator ",$whereString) . ";";
-    try {
-      $data = $this->db->query($sql);
-      return array(
-        "error" => null,
-        "updated" => $data,
-        "data" => array(
-          "updated" => $columns,
-          "match_values" => $where,
-        ),
-      );
-    } catch (\Exception $e) {
-      return array(
-        "error" => "Bad sql call",
-        "updated" => 0,
-        "data" => array(
-          "sql" => $sql
-        ),
-      );
-    }
-
-    // -- SET ContactName = 'Alfred Schmidt', City = 'Frankfurt'
-    // -- WHERE CustomerID = 1;";
+    return $rows;
   }
-
 
   private function process_row($row, array $extras = array(), null|string $tablename = null){
     $item = new stdClass();
@@ -358,7 +294,7 @@ trait SQLCalls
   * @return array|null
   *---------------------------------------------------------------------------*/
   private function get_element_by_id(string $tablename,string|int $id,array $extra = array()):array|null{
-    $sql = $this->create_sql_string($tablename,array("LIMIT" => 1),array(
+    $sql = $this->select_sql_string($tablename,array("LIMIT" => 1),array(
       "by_column" => array(
         "name" => "ID",
         "value" =>  $id,
@@ -376,7 +312,7 @@ trait SQLCalls
   * @return array|null
   *---------------------------------------------------------------------------*/
   private function get_element_by_slug(string $tablename,string $slug,array $extra = array()):array|null{
-    $sql = $this->create_sql_string($tablename,array("LIMIT" => 1),array(
+    $sql = $this->select_sql_string($tablename,array("LIMIT" => 1),array(
       "by_column" => array(
         "name" => "slug",
         "value" =>  $slug,
@@ -389,14 +325,344 @@ trait SQLCalls
     return $this->process_row($data[0],$extra,$tablename);
   }
 
+  private function check_ids(string|int|array $id):int|false|array{
+    if (is_string($id) && !is_numeric($id)) {
+      return false;
+    }
+    if (is_array($id)) {
+      $str = [];
+      foreach ($id as $value) {
+        if (is_numeric($value)) {
+          $str[] = $value;
+        }
+      }
+      if (empty($str)) {
+        return false;
+      }
+      return $str;
+    }
+    return (int) $id;
+  }
+  public function table_name(string $tablename){
+    $preTablename = preg_replace("/[^a-z0-9_]/i","",$tablename);
+    $realTablename = "{$this->db_prefix}$preTablename";
+    return $preTablename;
+  }
+  /** --------------------------------------------------------------------------
+  * Update elements
+  *---------------------------------------------------------------------------*/
+  public function validate_slug(string $tablename, string $slug){
 
+    $slug = preg_replace("/\s+/","-",$slug);
+    $slug = preg_replace("/[^a-z0-9_\-]/i","",$slug);
+    $slug = mb_strtolower($slug);
+    $post = $this->get_element_by_slug($tablename,$slug);
+    if ($post) {
+      // code...
+    }
+
+    $realTablename = $this->table_name($tablename);
+    $query = "SELECT slug FROM `$realTablename` WHERE slug REGEXP '^$slug-[0-9]+$'";
+  }
+
+  /** --------------------------------------------------------------------------
+  * Update elements
+  *---------------------------------------------------------------------------*/
+  private function insert_sql_row(string $tablename,string $title = "", string $slug = "", array $values = array()){
+    $error = [];
+    $title = trim($title);
+    $slug = trim($slug);
+    if (empty($title) && empty($slug)) {
+      $this->print_error("Title or slug required",206);
+      return;
+    }
+    if (empty($slug)) {
+      $slug = "$title";
+    }
+
+    //create a friendly slug
+    $slug = preg_replace("/\s+/","-",$slug);
+    $slug = preg_replace("/[^a-z0-9_\-]/i","",$slug);
+    $slug = mb_strtolower($slug);
+
+    if (empty($title)) {
+      $title = ucfirst(preg_replace("/(-|_)/"," ",$slug));
+    }
+
+    $stringvals = [];
+    $keyvals = [];
+
+    $keyvals = [];
+    $stringvals = [];
+    $processed = [];
+    $preparetype = "ss";
+    $exclude_keys = array_merge($this->db_defaults,[]);
+    if (isset($exclude_keys["status"]) ) {
+      unset($exclude_keys["status"]);
+    }
+    if (isset($exclude_keys["featured_id"]) ) {
+      unset($exclude_keys["featured_id"]);
+    }
+    $exclude_keys = array_keys($exclude_keys);
+
+    $exclude_keys = implode("|",$exclude_keys);
+
+    $reg = "/^($exclude_keys)$/i";
+    foreach (
+      $values as
+      $key //column name
+      => $value //value to update will process based on element type
+    ){
+      $key = trim($key);
+      //prevent custom update date;
+      if (preg_match("/^($exclude_keys)$/i",$key)) {
+        continue;
+      }
+      if ($value == null) {
+        $value = "";
+      }
+      if (is_array($value)) {
+        $value = serialize($value);
+      }
+      if (is_numeric($value)) {
+        $value = (string) $value;
+      }
+      $processed[] = "`$value`";
+      $stringvals[] = "?";
+      $preparetype .="s";
+      $keyvals[] = $key;
+    }
+
+    $preTablename = preg_replace("/[^a-z0-9_]/i","",$tablename);
+    $realTablename = "{$this->db_prefix}$preTablename";
+
+    $keyvals = !empty($keyvals) ? "," . implode(",",$keyvals) : "";
+    $stringvals = !empty($stringvals) ? "," . implode(",",$stringvals) : "";
+
+    $sql = "INSERT into `$realTablename` (title,slug$keyvals) VALUES (?,?$stringvals)";
+
+    $stmt = $this->db->prepare($sql);
+
+    // Check if the statement was prepared successfully
+    if ($stmt === false) {
+        die("Error preparing statement: " . $conn->error);
+    }
+    $stmt->bind_param($preparetype,$title,$slug,...$processed);  // This will unpack the array and pass its elements as parameters
+
+    $processed = false;
+    $error = null;
+    try {
+      $stmt->execute();
+      $processed = true;
+    } catch (\Exception $e) {
+      $error = $stmt->error;
+    }
+
+    if ($error) {
+      if (preg_match("/'slug'/i",$stmt->error)) {
+        $this->print_error("Element with slug '$slug' already exists",409);
+      }
+      $this->print_error($stmt->error,404);
+      return;
+    }
+    $stmt->close();
+
+    if ($processed) {
+      $post = $this->get_element_by_slug($tablename,$slug);
+      if ($post) {
+        $this->print_json(array(
+          "data" => $post,
+          "error" => null,
+        ));
+      }
+      else{
+        $this->code = 500;
+        $this->print_json(array(
+          "data" => null,
+          "error" => "Error trying to get created element with slug \"$slug\"",
+        ));
+      }
+    }
+  }
+
+
+  /** --------------------------------------------------------------------------
+  * Update elements
+  *---------------------------------------------------------------------------*/
+  private function update_sql_row(string $tablename, string|int|array $id = 0,array $values = array()){
+
+    //will not accept not numbers as id
+    $id = $this->check_ids($id);
+    if (!$id) {
+      return array(
+        "sql" => null,
+        "values" => null,
+      );
+    }
+
+
+    if (is_array($id)) {
+      $where = "ID in (" . implode(",",$id) . ")";
+    }else{
+      $where = "ID = $id";
+    }
+
+    $stringvals = [];
+    $keyvals = [];
+    $preparetype = "";
+    foreach (
+      $values as
+      $key //column name
+      => $value //value to update will process based on element type
+    ){
+      $key = trim($key);
+      //prevent custom update date;
+      if (preg_match("/^(updated|updated_by)$/i",$key)) {
+        continue;
+      }
+      if ($value == null) {
+        $value = "";
+      }
+      if (is_array($value)) {
+        $value = serialize($value);
+      }
+      if (is_numeric($value)) {
+        $value = (string) $value;
+      }
+      $stringvals[] = $value;
+      $preparetype .="s";
+      $keyvals[] = "$key = ?";
+    }
+
+    //if no values to update, will not process the query string;
+    if (empty($stringvals)) {
+      return array(
+        "sql" => null,
+        "values" => null,
+      );
+    }
+
+
+    $tablename = preg_replace("/[^a-z0-9_]/i","",$tablename);
+    $tablename = "{$this->db_prefix}$tablename";
+    $keyvals = implode(", ",$keyvals);
+
+    $sql = "UPDATE `$tablename` SET $keyvals, `updated` = NOW() WHERE $where;";
+    $stmt = $this->db->prepare($sql);
+
+    // Check if the statement was prepared successfully
+    if ($stmt === false) {
+        die("Error preparing statement: " . $conn->error);
+    }
+    $stmt->bind_param($preparetype, ...$stringvals);  // This will unpack the array and pass its elements as parameters
+
+    if ($stmt->execute()) {
+      echo "Array stored successfully!";
+    } else {
+      echo "Error storing array: " . $stmt->error;
+    }
+    $stmt->close();
+
+
+
+    return array(
+      "sql" => $sql,
+      "values" => $stringvals,
+      "types" => $preparetype
+    );
+  }
 
   /** --------------------------------------------------------------------------
   * @return string[]
   *                 [0] Call rows SQL
   *                 [1] sql to get total rows with params
   *---------------------------------------------------------------------------*/
-  private function create_sql_string(string $tablename, array $params = array(), array $extras = array()){
+  private function __select_sql_string(string $tablename, array $params = array(), array $extras = array(), string $call = "SELECT"){
+    $tablename = preg_replace("/[^a-z0-9_]/i","",$tablename);
+    $from = "from `{$this->db_prefix}$tablename`";
+
+    $where = [];
+    $s = "";
+    if (isset($params["s"])) {
+      $s = $params["s"];
+    }
+    else if (isset($_GET["s"])){
+      $s = $_GET["s"];
+    }
+    $by_col = false;
+
+
+    if (is_array($extras["by_column"] ?? null)) {
+      $value = $extras["by_column"]["value"] ?? null;
+      $colName = $extras["by_column"]["name"] ?? null;
+      if ( is_string($colName) && $value ) {
+        $by_col = true;
+        $colName = preg_replace("/[^a-z0-9_]/i","",$colName);
+        if (is_array($value)) {
+          $values_list = [];
+          foreach ($value as $el) {
+            if (is_string($el) || is_numeric($el)) {
+              $values_list[] = !is_numeric($el) ? "`$el`" : $el;
+            }
+          }
+
+          if (!empty($values_list)) {
+            $value = $this->scape(implode(",",$values_list));
+            if (!empty($value)) {
+              $where[] = "$colName in ($value)";
+            }
+          }
+        }else{
+          $value = $this->scape($value);
+          $where[] = "$colName='$value'";
+        }
+      }
+    }
+
+    if (!$by_col && !empty($s)) {
+      $s = $this->scape($s);
+      $s = addslashes($s);
+      $s = trim($s);
+      $sCols = $this->compareArray($this->search_columns,$extras,"search_columns");
+      foreach ($sCols as $value) {
+        $where[] = $this->scape($value) . " LIKE '%$s%'";
+      }
+    }
+
+    if (!empty($where)) {
+      $where = " WHERE " . implode(" OR ", $where);
+    }else{
+      $where = "";
+    }
+
+    $limit = "";
+    if (is_int($params["limit"] ?? "null")) {
+      $limit = "LIMIT {$params["limit"]}";
+    }
+
+
+    if (is_int($params["offset"] ?? "null")) {
+      $limit .= " OFFSET {$params["offset"]}";
+    }
+
+    $total = "SELECT COUNT(*) $from{$where}";
+
+    $sql = "SELECT * $from{$where} $limit";
+    // echo $sql;
+    //
+    // die();
+    return [
+      $sql,
+      $total,
+    ];
+  }
+
+  /** --------------------------------------------------------------------------
+  * @return string[]
+  *                 [0] Call rows SQL
+  *                 [1] sql to get total rows with params
+  *---------------------------------------------------------------------------*/
+  private function select_sql_string(string $tablename, array $params = array(), array $extras = array(), string $call = "SELECT"){
     $tablename = preg_replace("/[^a-z0-9_]/i","",$tablename);
     $from = "from `{$this->db_prefix}$tablename`";
 
@@ -532,13 +798,16 @@ trait SQLCalls
     );
 
 
-    $sql = $this->create_sql_string($tablename,array(
+    $sql = $this->select_sql_string($tablename,array(
       "limit" => $per_page,
       "offset" => $page > 1 ? ($page * $per_page) : null,
     ),$extras);
 
-    $total = $this->query($sql[1]);
-    $total = $total ? count($total) : 0;
+    $preTotal = $this->query($sql[1]);
+    $total = 0;
+    if ( !empty($preTotal) ) {
+      $total = $preTotal[0][0];
+    }
 
     $list = [];
     $pages = ceil($total / $per_page );
@@ -554,7 +823,7 @@ trait SQLCalls
       }
 
     }else{
-      $list = ["muajaja"];
+      $list = [];
     }
 
     $this->response = array(

@@ -11,6 +11,6 @@ return [
   "fields_in_child" => array(
     "ID",
     "title",
-    "slug"
+    "slug",
   ),
 ];

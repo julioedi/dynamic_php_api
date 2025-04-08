@@ -113,17 +113,40 @@ trait Utils
     }
 
 
-    if ($this->method === "GET") {
-      $post = $this->$function($tablename,$id,$custom);
-      if (!$post) {
-        $this->print_error(null,404);
-        return;
-      }
-      $this->print_json($post);
-      return;
-    }
-
     $token = $this->validateToken();
+    switch ($this->method) {
+      case "GET":
+          $post = $this->$function($tablename,$id,$custom);
+          if (!$post) {
+            $this->print_error(null,404);
+            return;
+          }
+          $this->print_json($post);
+          return;
+        break;
+      case "DELETE":
+          $post = $this->get_element_by_id($tablename,$id,array(
+            "fields_in" => ["ID"]
+          ));
+          if (!$post) {
+            $this->print_error(null,404);
+            return;
+          }
+          $val = $this->db->query("DELETE FROM `{$this->db_prefix}$tablename` where ID = $id");
+          if (!$val) {
+            $this->print_error("ID dont exists",404);
+            return;
+          }
+          $this->print_json(array(
+            "updated" => $id,
+          ));
+          return;
+        break;
+
+      default:
+        // code...
+        break;
+    }
     if (!$token) {
       $this->print_error(null,401);
       return;

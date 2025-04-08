@@ -126,6 +126,7 @@ trait Response{
     header('Content-Type: application/json; charset=utf-8');
     $name = empty(REQUEST) ? "empty" : preg_replace("/[^a-z0-9_-]/i","_",REQUEST);
     header("Content-Disposition: inline; filename=\"$name.json\"");
+    header('Color-Scheme: dark');
 
     if (isset($_SERVER['HTTP_ORIGIN'])) {
       header("Access-Control-Allow-Origin: *");
@@ -149,7 +150,9 @@ trait Response{
     $this->error = true;
     $this->error_message = $message;
     $this->response = $response;
+    $this->print();
   }
+
   public function print(){
     $code = $this->code;
     if (empty(REQUEST)) {
