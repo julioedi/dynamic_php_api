@@ -44,6 +44,11 @@ trait DB
   );
   public $db_stringDefaults = "";
 
+
+  public function get_password(string $password){
+    return password_hash($password,PASSWORD_DEFAULT);
+  }
+
   public function update_env(string $key, string $value){
     $reg = "#($key)\=($value)#i";
     $lines = file($env, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
@@ -233,7 +238,7 @@ trait DB
     }
     $sql .= ")";
     $sql .= $charset_collate . ";";
-    
+
     try {
       $val = $this->db->query($sql);
       if ($val) {

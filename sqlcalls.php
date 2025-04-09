@@ -111,7 +111,7 @@ trait SQLCalls
   * @return
   *---------------------------------------------------------------------------*/
   public function generateUserToken(string $key,string $value,string $password, int $days = 30):array{
-    $token = array(
+    $data = array(
       "key" => $key,
       "value" => $value,
       "password" => $password,

@@ -30,20 +30,19 @@ $user = $this->select_sql_string("users",array("limit" => 1),array(
   "by_column" => array(
     "OR" => false,
     $selector,
-    array(
-      "name" => "password",
-      "value" => md5($password),
-    ),
   ),
 ));
 
-$data = $this->get_query_rows($user[0]);
+
+$data = $this->query($user[0]);
 $err = $selector["name"] == "email" ? "email" : "username";
-if (!$data) {
+
+//avoid saying if email or password
+if (!$data || !password_verify($password,$data[0]["password"] ?? "")) {
   $this->print_error("Wrong $err or password",403);
 }
 
 $base = $this->generateUserToken($selector["name"],$selector["value"],$password);
 
-// $this->validateToken();
+$token = $this->validateToken();
 $this->print_json($base);
