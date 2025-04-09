@@ -73,9 +73,71 @@ trait SQLCalls
   /** --------------------------------------------------------------------------
   * @return bool check if token match for Create,Update,Delete
   *---------------------------------------------------------------------------*/
-  public function validateToken(string $token = ""):array|bool|null{
-    // return array();
-    return true;
+    public function validateToken():array|bool|null{
+    if (!isset($_COOKIE["account_data"])) {
+      // echo $account;
+      return null;
+    }
+
+    $cookie = $_COOKIE["account_data"];
+    $cookie = $this->decode($cookie);
+    if (!is_array($cookie)) {
+      return null;
+    }
+
+    return $cookie;
+  }
+
+
+  /** --------------------------------------------------------------------------
+  * @return
+  *---------------------------------------------------------------------------*/
+  public function generateToken(array|string $data,string $key = ""):array|string{
+    if (is_array($data)) {
+      $data = serialize($data);
+    }
+    $data = $this->encode($data);
+    if (empty($key)) {
+      return $data;
+    }
+    return array(
+      "key" => $key,
+      "value" => $data,
+    );
+  }
+
+
+  /** --------------------------------------------------------------------------
+  * @return
+  *---------------------------------------------------------------------------*/
+  public function generateUserToken(string $key,string $value,string $password, int $days = 30):array{
+    $token = array(
+      "key" => $key,
+      "value" => $value,
+      "password" => $password,
+    );
+    $token = $this->encode($data,"account_data");
+    $this->addCookie("account_data",$token,$days);
+    return array(
+      "key" => "account_data",
+      "token" => $token,
+    );
+  }
+
+  public function deleteCookie(string $cookieName){
+    if (isset($_COOKIE["$cookieName"])) {
+      $days = time() - (3600 * 24 * 30); // (segs in hour) * (hours in day) * ( total days );
+      setcookie($cookieName, "", $days);
+    }
+  }
+
+  public function addCookie(string $name = "", string|array|int $value, $days = 30 ){
+    $this->deleteCookie($name);
+    $days = time() + (3600 * 24 * $days); // (segs in hour) * (hours in day) * ( total days );
+    if (is_int($value)) {
+      $value = (string) $value;
+    }
+    setcookie($name, $value, $days);
   }
 
 
@@ -364,6 +426,8 @@ trait SQLCalls
     $realTablename = $this->table_name($tablename);
     $query = "SELECT slug FROM `$realTablename` WHERE slug REGEXP '^$slug-[0-9]+$'";
   }
+
+
 
   /** --------------------------------------------------------------------------
   * Update elements
@@ -657,6 +721,48 @@ trait SQLCalls
     ];
   }
 
+  private function by_column(array|string $by_column):string{
+    if (is_string($by_column)) {
+      return $by_column;
+    }
+    $single = [];
+    $value = $by_column["value"] ?? null;
+    $colName = $by_column["name"] ?? null;
+    $iterator = $by_column["OR"] ?? true;
+    $iterator = $iterator ? "OR" : "AND";
+    if (is_string($colName) && $value) {
+      $colName = preg_replace("/[^a-z0-9_]/i","",$colName);
+      if (is_array($value)) {
+        $values_list = [];
+        foreach ($value as $el) {
+          if (is_string($el) || is_numeric($el)) {
+            $values_list[] = !is_numeric($el) ? "`$el`" : $el;
+          }
+        }
+
+        if (!empty($values_list)) {
+          $value = $this->scape(implode(",",$values_list));
+          if (!empty($value)) {
+            $single[] = "$colName in ($value)";
+          }
+        }
+      }else{
+        $value = $this->scape($value);
+        $value = $this->scape($value);
+        $single[] = "`$colName` = '$value'";
+      }
+    }
+    foreach ($by_column as $key => $value) {
+      if (is_array($value)) {
+        if (is_numeric($key)) {
+          $single[] = $this->by_column($value);
+        }
+        continue;
+      }
+    }
+    return implode(" $iterator ",$single);
+  }
+
   /** --------------------------------------------------------------------------
   * @return string[]
   *                 [0] Call rows SQL
@@ -674,33 +780,12 @@ trait SQLCalls
     else if (isset($_GET["s"])){
       $s = $_GET["s"];
     }
-    $by_col = false;
-    if (is_array($extras["by_column"] ?? null)) {
-      $value = $extras["by_column"]["value"] ?? null;
-      $colName = $extras["by_column"]["name"] ?? null;
-      if ( is_string($colName) && $value ) {
-        $by_col = true;
-        $colName = preg_replace("/[^a-z0-9_]/i","",$colName);
-        if (is_array($value)) {
-          $values_list = [];
-          foreach ($value as $el) {
-            if (is_string($el) || is_numeric($el)) {
-              $values_list[] = !is_numeric($el) ? "`$el`" : $el;
-            }
-          }
-
-          if (!empty($values_list)) {
-            $value = $this->scape(implode(",",$values_list));
-            if (!empty($value)) {
-              $where[] = "$colName in ($value)";
-            }
-          }
-        }else{
-          $value = $this->scape($value);
-          $where[] = "$colName='$value'";
-        }
-      }
+    $pre = $this->by_column($extras["by_column"] ?? "");
+    if (!empty($pre)) {
+      $where[] = $pre;
     }
+
+    $by_col = !empty($where);
 
     if (!$by_col && !empty($s)) {
       $s = $this->scape($s);
@@ -713,6 +798,7 @@ trait SQLCalls
     }
 
     if (!empty($where)) {
+      $iterator = $extras["or"] ?? null;
       $where = " WHERE " . implode(" OR ", $where);
     }else{
       $where = "";
@@ -826,12 +912,12 @@ trait SQLCalls
       $list = [];
     }
 
-    $this->response = array(
+    $this->print_json(array(
       "current_page" => $page,
       "pages" => $pages,
       "per_page" => $per_page,
       "total" => $total,
       "list" => $list
-    );
+    ));
   }
 }

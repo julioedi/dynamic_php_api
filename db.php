@@ -23,16 +23,18 @@ trait DB
   public $charset_collate = null;
   public $tables = array();
   public $db_optionals = array(
-    "date"      => "datetime NOT NULL default CURRENT_TIMESTAMP",
-    "longText"  => "text NOT NULL default ''",
-    "shortText" => "varchar(20) NOT NULL default ''",
-    "code_0"      => "int(11) NOT NULL default 0",
-    "code_1"      => "int(11) NOT NULL default 1",
+    "date"          => "datetime NOT NULL default CURRENT_TIMESTAMP",
+    "longText"      => "text NOT NULL default ''",
+    "shortText"     => "varchar(20) NOT NULL default ''",
+    "code_0"        => "int(11) NOT NULL default 0",
+    "code_1"        => "int(11) NOT NULL default 1",
+    "required"      => "text NOT NULL",
+    "required_int"  => "int(11) NOT NULL",
   );
   public $db_defaults = array(
-      "ID"            => "bigint(20) unsigned NOT NULL auto_increment",
-      "title"         => "text NOT NULL default ''",
-      "slug"          => "varchar(200) NOT NULL default ''",
+      "ID"            => "bigint(200) unsigned NOT NULL auto_increment",
+      "title"         => "text NOT NULL",
+      "slug"          => "varchar(200) NOT NULL",
       "created"       => "datetime NOT NULL default CURRENT_TIMESTAMP",
       "created_by"    => "int(11) NOT NULL default 0",
       "updated"       => "datetime NOT NULL default CURRENT_TIMESTAMP",
@@ -184,7 +186,7 @@ trait DB
     $custom = isset($preData['custom']);
     if (isset($this->tables[$tableName]) && !is_array($this->tables[$tableName]) ) {
       $this->tables[$tableName] = $preData;
-      return 0;
+      // return 0;
     }
 
     $data = $preData['cols'] ?? array();
@@ -195,6 +197,10 @@ trait DB
     $sql .= "(\n";
 
     $sql .= $this->get_defaults($custom);
+    $check = !$custom ? array(
+      "title != ''",
+      "slug != ''"
+    ) : array();
     foreach ($data as $key => $value) {
       if (!is_string($value)) continue;
       if (is_numeric($value)) continue;
@@ -203,24 +209,31 @@ trait DB
       $pre = $key . $value;
       if (preg_match("/(\"|\(|\)|\,)/",$pre)) continue;
 
+      if ($value == "required") {
+        $check[] = "$key !=''";
+      }
+      elseif ($value == "required_int") {
+        $check[] = "$key != 0";
+      }
       $sql .= "`$key` {$this->db_optionals[$value]},\n";
-
     }
+
     $sql .= "PRIMARY KEY  (ID)";
     if (!$custom) {
       $sql .= ",\nUNIQUE (slug)\n";//UNIQUE
     }else if(is_array($preData["unique"] ?? null)){
       foreach ($preData["unique"] as $value) {
         if (is_string($value) && isset($data[$value])) {
-          $sql .= "UNIQUE ($value)\n";//UNIQUE
+          $sql .= "\n,UNIQUE ($value)\n";//UNIQUE
         }
       }
     }
+    if (!empty($check)) {
+      $sql .= ",\nCHECK (" . implode(" AND ", $check) . ")\n";
+    }
     $sql .= ")";
     $sql .= $charset_collate . ";";
-    // echo "<pre>";
-    // print_r($sql);
-    // die();
+    
     try {
       $val = $this->db->query($sql);
       if ($val) {

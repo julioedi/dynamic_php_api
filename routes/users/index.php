@@ -1,4 +1,9 @@
 <?php
+// $this->validateToken();
+$name = "hola";
+$encode = $this->validateToken();
+
+echo json_encode([$encode]);
 
 $this->pagination("users",array(
   "exclude" => array(

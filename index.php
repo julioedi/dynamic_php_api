@@ -31,6 +31,7 @@ foreach ([
 }
 
 class App{
+  use Encoder;
   use Response;
   use DB;
   use SQLCalls;
@@ -45,6 +46,14 @@ class App{
     $this->get_env();
     $this->connect();
     // echo "<pre>";
+    //avoid direct dynamic files
+    $file = ROUTES . "/" . REQUEST . ".php";
+    if (!preg_match("/\/index$/i",REQUEST)) {
+      $file = str_replace(["[","]"],"",$file);
+      if (file_exists($file)) {
+        require_once $file;
+      }
+    }
     $this->scanRoutes();
     // echo "</pre>";
     // die();
@@ -133,7 +142,6 @@ class App{
       //prevent relative paths
       if ($filedir == "." || $filedir == ".." || $filedir == "index.php") continue;
       $base = "$def_route/$filedir";
-
 
 
       //recursive scan subdirectories
