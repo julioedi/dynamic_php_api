@@ -12,20 +12,15 @@ return [
   "cols" => array(
     "name" => "longText",
     "email" => "required",
-    "user_level" => "code_1",
+    "user_roles" => "longText",
     "content" => "longText",
-    "markers" => "longText",
-    "follow" => "longText",
-    "seo" => "longText",
     "password" => "required",
   ),
   //keys that must be serialized
   "json" => array(
     "name",
     "content",
-    "follow",
-    "markers",
-    "seo",
+    "user_roles",
   ),
   // "search_columns" => array(
   //   "content",

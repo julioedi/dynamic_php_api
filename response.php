@@ -117,30 +117,51 @@ trait Response{
     die();
   }
 
-  private function headers(){
+  private function headers() {
     $code = $this->code;
     $message = $this->statusCodes["$code"];
-    $protocol = (isset($_SERVER['SERVER_PROTOCOL']) ? $_SERVER['SERVER_PROTOCOL'] : 'HTTP/1.0');
+    $protocol = $_SERVER['SERVER_PROTOCOL'] ?? 'HTTP/1.0';
     header($protocol . ' ' . $code . ' ' . $message);
     $GLOBALS['http_response_code'] = $code;
+
+    // Content headers
     header('Content-Type: application/json; charset=utf-8');
-    $name = empty(REQUEST) ? "empty" : preg_replace("/[^a-z0-9_-]/i","_",REQUEST);
+    $name = empty(REQUEST) ? "empty" : preg_replace("/[^a-z0-9_-]/i", "_", REQUEST);
     header("Content-Disposition: inline; filename=\"$name.json\"");
     header('Color-Scheme: dark');
 
+    // --- CORS Headers ---
+    // Allow credentials like cookies
+    header('Access-Control-Allow-Credentials: true');
+
+    // Handle allowed origin
     if (isset($_SERVER['HTTP_ORIGIN'])) {
-      header("Access-Control-Allow-Origin: *");
-      header('Access-Control-Allow-Credentials: true');
-      header('Access-Control-Max-Age: 86400');    // cache for 1 day
+        $origin = $_SERVER['HTTP_ORIGIN'];
+
+        // Optional: add an allowed origins whitelist
+        $allowed_origins = ['http://localhost:3000'];
+
+        if (in_array($origin, $allowed_origins)) {
+            header("Access-Control-Allow-Origin: $origin");
+        }
+
+        // Set Access-Control-Max-Age to cache preflight response
+        header('Access-Control-Max-Age: 86400'); // 1 day
     }
-    foreach ([
-      "X-Powered-By",
-      "Server",
-      "Date"
-    ] as $value) {
-      header_remove($value);
+
+    // Optional: handle preflight OPTIONS request (move this outside if you call headers() inside every endpoint)
+    if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+        header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+        header('Access-Control-Allow-Headers: Content-Type, Authorization');
+        exit(0);
     }
-  }
+
+    // Security cleanup headers
+    foreach (["X-Powered-By", "Server", "Date"] as $value) {
+        header_remove($value);
+    }
+}
+
 
   public function print_error(string|null $message = null, int $code = 404,mixed $response = null){
     if (empty($message)) {

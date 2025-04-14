@@ -68,10 +68,16 @@ trait Utils
   /** --------------------------------------------------------------------------
   * @return array module to print elements and assing regex
   *---------------------------------------------------------------------------*/
-  public function print_element_by_id(string $tablename, array $custom = array()){
+  public function print_element_by_id(string $tablename = "", array $custom = array()){
+    if (empty($tablename)) {
+      $tableCode = explode("/",REQUEST);
+      if ($tableCode[0] ?? null ) {
+        $tablename = $tableCode[0];
+      }
+    }
     $this->print_element_by_($tablename,"id",$custom);
   }
-  public function print_element_by_slug(string $tablename, array $custom = array()){
+  public function print_element_by_slug(string $tablename = "", array $custom = array()){
     $this->print_element_by_($tablename,"slug",$custom,false);
   }
 
@@ -114,6 +120,7 @@ trait Utils
 
 
     $token = $this->validateToken();
+    $data = $this->get_body();
     switch ($this->method) {
       case "GET":
           $post = $this->$function($tablename,$id,$custom);
@@ -125,6 +132,7 @@ trait Utils
           return;
         break;
       case "DELETE":
+          $this->processToken();
           $post = $this->get_element_by_id($tablename,$id,array(
             "fields_in" => ["ID"]
           ));
@@ -142,14 +150,63 @@ trait Utils
           ));
           return;
         break;
+      case "INSERT":
+          $this->processToken();
+          $title = $data["title"] ?? null;
+          $slug = $data["title"] ?? null;
+
+          //only allowed text slug
+          if (is_string($slug)) {
+            $slug = $this->clean_slug($slug);
+          }
+          elseif (is_string($title)) {
+            $slug = $this->clean_slug($title);
+          }
+          elseif (is_numeric($slug)) {
+            $slug = (string) $slug;
+          }
+          else{
+            $slug = null;
+          }
+
+          //only allowed text title
+          if (!is_string($title) && !is_numeric($title) && $slug) {
+            $title = preg_replace("/(-|_)/","",$slug);
+            $title = ucfirst($title);
+          }
+          else{
+            $title = null;
+          }
+
+
+          if (!$title) {
+            $this->print_error("No title provided",400);
+            return;
+          }
+          if (!$slug) {
+            $this->print_error("No title and slug provided",400);
+            return;
+          }
+
+          //slug must be unique
+          $exists = $this->exists_slug($tablename,$slug);
+
+          //error when slug is already registered in db
+          if ($exists) {
+            $this->print_json("No title and slug provided",409,array(
+              "current_slug" => $slug,
+              "sugested_slug" => $exists,
+            ));
+            return;
+          }
+          $this->insert_sql_row($tablename,$title,$slug,$data);
+          return;
+          //insert_sql_row
+          break;
 
       default:
-        // code...
+        $this->print_error(null,405);
         break;
-    }
-    if (!$token) {
-      $this->print_error(null,401);
-      return;
     }
   }
 }

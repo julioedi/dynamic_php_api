@@ -1,6 +1,5 @@
 <?php
-
-$this->pagination("categories",array(
+$this->pagination(null,array(
   "exclude" => array(
     "seo",
     "attached_images",

@@ -34,7 +34,7 @@ trait SQLCalls
       }
       return $list;
     } catch (\Exception $e) {
-      echo $e;
+      // echo $ee;
       return null;
     }
   }
@@ -52,41 +52,68 @@ trait SQLCalls
   /** --------------------------------------------------------------------------
   * @return array gets the data provided by a form body content in fetch/curl
   *---------------------------------------------------------------------------*/
-  public function get_body():array{
+  public function get_body(): array {
     if (!empty($_POST)) {
-      return $_POST;
-    }
-    $data = file_get_contents("php://input");
-    if (empty($data)) {
-      return $data;
-    }
-    try {
-      $data = json_decode($data);
-      return $data;
-    } catch (\Exception $e) {
-      return array();
+        return $_POST;
     }
 
-  }
+    $data = file_get_contents("php://input");
+    try {
+        $data = trim($data);
+        if (empty($data)) {
+            return [];
+        }
+
+        // Decode JSON into associative array
+        $decoded = json_decode($data, true);
+
+        // Check if JSON decoding succeeded
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return [];
+        }
+
+        // Ensure it's an array
+        return is_array($decoded) ? $decoded : [];
+    } catch (\Exception $e) {
+        return [];
+    }
+}
+
 
 
   /** --------------------------------------------------------------------------
   * @return bool check if token match for Create,Update,Delete
   *---------------------------------------------------------------------------*/
-    public function validateToken():array|bool|null{
-    if (!isset($_COOKIE["account_data"])) {
-      // echo $account;
-      return null;
-    }
+    public function validateToken(): ?array {
+      if (isset($this->user_token)) {
+        return $this->user_token;
+      }
+      if (!isset($_COOKIE["account_data"])) {
+          return null;
+      }
 
-    $cookie = $_COOKIE["account_data"];
-    $cookie = $this->decode($cookie);
-    if (!is_array($cookie)) {
-      return null;
-    }
+      $cookie = $_COOKIE["account_data"];
+      $decoded = $this->decode($cookie);
 
-    return $cookie;
+      if (!is_array($decoded)) {
+          return null;
+      }
+
+      // Optional: Check for required keys
+      // if (!isset($decoded['user_id'])) return null;
+      $this->user_token = $decoded;
+      return $decoded;
   }
+
+  public function processToken():void{
+    $token = $this->validateToken();
+    if (!$token) {
+      $this->print_error(null,401);
+      return;
+    }
+  }
+
+
 
 
   /** --------------------------------------------------------------------------
@@ -117,7 +144,7 @@ trait SQLCalls
       "password" => $password,
     );
     $token = $this->encode($data,"account_data");
-    $this->addCookie("account_data",$token,$days);
+    // $this->addCookie("account_data",$token,$days);
     return array(
       "key" => "account_data",
       "token" => $token,
@@ -712,9 +739,7 @@ trait SQLCalls
     $total = "SELECT COUNT(*) $from{$where}";
 
     $sql = "SELECT * $from{$where} $limit";
-    // echo $sql;
-    //
-    // die();
+
     return [
       $sql,
       $total,
@@ -817,16 +842,25 @@ trait SQLCalls
     $total = "SELECT COUNT(*) $from{$where}";
 
     $sql = "SELECT * $from{$where} $limit";
-    // echo $sql;
-    //
-    // die();
+
     return [
       $sql,
       $total,
     ];
   }
 
-  public function pagination(string $tablename, array $extras = array()){
+  public function pagination(string|null $tablename = null, array $extras = array()){
+    if (empty($tablename)) {
+      $uriArgs = $this->getArgs();
+      if (isset($uriArgs["page"])) {
+        $tablename = $uriArgs["page"];
+      }else{
+        $base = preg_replace("/^.*?\/([a-z0-9\-_]+)/i","$1",REQUEST);
+        $base = mb_strtolower($base);
+        $tablename = $base;
+      }
+    }
+
     $this->response = [$tablename];
 
     $per_page = $_GET["per_page"] ?? "{$this->post_per_page}";
@@ -892,7 +926,7 @@ trait SQLCalls
     $preTotal = $this->query($sql[1]);
     $total = 0;
     if ( !empty($preTotal) ) {
-      $total = $preTotal[0][0];
+      $total = (int) $preTotal[0][0];
     }
 
     $list = [];
@@ -913,6 +947,7 @@ trait SQLCalls
     }
 
     $this->print_json(array(
+      "table" => $tablename,
       "current_page" => $page,
       "pages" => $pages,
       "per_page" => $per_page,

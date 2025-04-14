@@ -22,6 +22,7 @@ trait DB
   public $collation = "utf8mb4_general_ci";
   public $charset_collate = null;
   public $tables = array();
+  public $user_token = null;
   public $db_optionals = array(
     "date"          => "datetime NOT NULL default CURRENT_TIMESTAMP",
     "longText"      => "text NOT NULL default ''",
@@ -287,13 +288,29 @@ trait DB
     if (!is_dir($tablesPath)) {
       return;
     }
+    $tableReg = "/[^a-z0-9_]+/";
     $tables = scandir($tablesPath);
     $reg = "/^(.*?)\.php$/i";
     foreach ($tables as $tableFile) {
-      if (!preg_match($reg,$tableFile)) {
+      if (!preg_match($reg,$tableFile) || preg_match("/^_/",$tableFile)) {
         continue;
       }
       $name = preg_replace($reg,"$1",$tableFile);
+      preg_match($this->dyanmicFileNamesReg,$name,$matches);
+      if (!empty($matches)) {
+        $pre = $matches["name"];
+        $pre = explode(",",$pre);
+        foreach ($pre as $name) {
+          $name = preg_replace($tableReg,"",$name);
+          $data = require "$tablesPath/$tableFile";
+          $data = !is_array($data ?? "") ? array() : $data;
+          if (is_array($data ?? "")) {
+             $this->createTable($name,$data);
+          }
+        }
+        continue;
+      }
+      $name = preg_replace($tableReg,"",$name);
       $data = require "$tablesPath/$tableFile";
       $data = !is_array($data ?? "") ? array() : $data;
       if (is_array($data ?? "")) {

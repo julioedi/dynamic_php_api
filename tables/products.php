@@ -3,6 +3,7 @@ return [
   "cols" => array(
     "excerpt" => "shortText",
     "content" => "longText",
+    "ingredients" => "longText",
     "tags" => "longText",
     "categories" => "longText",
     "type" => "code_0",

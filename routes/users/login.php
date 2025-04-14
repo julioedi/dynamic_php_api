@@ -1,7 +1,15 @@
 <?php
-$username = $_POST["username"] ?? $_GET["username"] ?? null;
-$password = $_POST["password"] ?? $_GET["password"] ?? null;
-$email = $_POST["email"] ?? $_GET["email"] ?? null;
+
+$token = $this->validateToken();
+if ($token) {
+  $username = $token["key"] == "slug" ? $token["value"] : null;
+  $email = $token["key"] == "email" ? $token["value"] : null;
+  $password = $token["password"];
+}else{
+  $username = $_POST["username"] ?? $_GET["username"] ?? null;
+  $password = $_POST["password"] ?? $_GET["password"] ?? null;
+  $email = $_POST["email"] ?? $_GET["email"] ?? null;
+}
 if (!$username && !$email) {
   $this->print_error("Username or email required",412);
 }
@@ -42,7 +50,25 @@ if (!$data || !password_verify($password,$data[0]["password"] ?? "")) {
   $this->print_error("Wrong $err or password",403);
 }
 
-$base = $this->generateUserToken($selector["name"],$selector["value"],$password);
+$data = $this->process_row($data[0],array(
+  "exclude" => [
+    "created",
+    "created_by",
+    "updated",
+    "updated_by",
+    "content",
+  ],
+),"users");
 
-$token = $this->validateToken();
+if ($data["status"] < 0 && $data["ID"] != 1 ) {
+  $data = array();
+  $this->print_error("Account disabled",500);
+}
+
+$base = $this->generateUserToken($selector["name"],$selector["value"],$password);
+if ($data["ID"] == 1) {
+  $data["user_roles"] = [0];
+}
+$base["data"] = $data;
+
 $this->print_json($base);

@@ -45,7 +45,7 @@ class App{
     $this->rootPath();
     $this->get_env();
     $this->connect();
-    // echo "<pre>";
+
     //avoid direct dynamic files
     $file = ROUTES . "/" . REQUEST . ".php";
     if (!preg_match("/\/index$/i",REQUEST)) {
@@ -55,11 +55,57 @@ class App{
       }
     }
     $this->scanRoutes();
-    // echo "</pre>";
-    // die();
     $this->load_routes();
     $this->print();
   }
+
+  public function clean_slug(string|int $slug): string {
+    // Convert to string and trim whitespace from beginning and end
+    $slug = trim((string) $slug);
+
+    // Convert all whitespace characters (spaces, tabs, etc.) to dashes
+    $slug = preg_replace('/\s+/', '-', $slug);
+
+    // Replace all non-alphanumeric characters (except dash and underscore) with dashes
+    $slug = preg_replace('/[^a-zA-Z0-9\-_]/', '-', $slug);
+
+    // Replace multiple dashes or underscores with a single dash
+    $slug = preg_replace('/[-_]+/', '-', $slug);
+
+    // Trim dashes from beginning and end
+    $slug = trim($slug, '-');
+
+    // Convert to lowercase
+    return mb_strtolower($slug);
+  }
+
+  public function exists_slug(string $tablename,string $slug):false|string{
+    $slug = $this->clean_slug($slug);
+    $exists = $this->get_element_by_slug($tablename,$slug);
+    //slug dont exists
+    if ( !$exists ) {
+      return false;
+    }
+
+    $reg = "^{$slug}-[0-9]+$";
+    $tablename = "{$this->db_prefix}$tablename";
+    $sql = "SELECT * FROM `$tablename` WHERE `slug` REGEXP '$reg'";
+    $rows = $this->get_query_rows($sql);
+    if (empty($rows)) {
+      return "$slug-0";
+    }
+    $newNum = 1;
+    foreach ($rows as $row) {
+      $num =  preg_replace("/^.*?-([0-9]+)/","$1",$row["slug"]);
+      if ($num >= $newNum) {
+        $newNum = $num + 1;
+      }
+    }
+    return "$slug-{$newNum}";
+
+
+  }
+
 
   public function compareArray(array $element,array $extras,string $key){
     $first = $element;
@@ -122,6 +168,12 @@ class App{
   }
 
   private function match_url(string $regex,$file):bool{
+    if (preg_match("/^[a-z0-9_-]+$/",$regex)) {
+      $regex = "(?<page>$regex)";
+    }
+    elseif (preg_match("/^([a-z0-9_\-]+)\/\(/",$regex)) {
+      $regex = preg_replace("/^([a-z0-9_\-]+)/","(?<page>$1)",$regex);
+    }
     $reg = "#^" . $regex . "$#i";
     if (!preg_match("#^" . $regex . "$#i",REQUEST)) {
       return false;
@@ -273,7 +325,6 @@ class App{
     foreach ($this->dynamic_routes as $regex => $options) {
       $path = ROUTES . "/" . ($options["callback"] ?? null) . ".php";
 
-      // echo $path;
       $regMethod = mb_strtolower($options["method"]);
       $currentMethod = mb_strtolower($_SERVER["REQUEST_METHOD"]);
       if ($regMethod != "all" && $regMethod != $currentMethod) {
